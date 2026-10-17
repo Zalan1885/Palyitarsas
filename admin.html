@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin – Nagy-Magyarország RTS</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:16px;color:#222}
+  input,select,button{padding:7px 10px;font-size:14px;margin:2px}
+  button{cursor:pointer}
+  table{border-collapse:collapse;width:100%;margin:8px 0}
+  th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left;font-size:14px}
+  .card{border:1px solid #ccc;border-radius:8px;padding:12px;margin:12px 0}
+  .err{color:#b00020}.chip{display:inline-block;background:#eef;border-radius:10px;padding:1px 8px;margin:1px;font-size:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<h1>Admin – Nagy-Magyarország RTS</h1>
+<div id="app">Betöltés…</div>
+
+<script>
+const sb = supabase.createClient(
+  'https://bcskdpaykdxboimbglud.supabase.co',
+  'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo'
+);
+const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
+const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+let S = {profile:null, games:[], sel:null, players:[], counties:[], msg:''};
+
+async function boot() {
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session) return renderLogin();
+  const { data } = await sb.from('profiles').select('username,is_admin').eq('id', session.user.id).single();
+  S.profile = data;
+  if (data?.is_admin) await loadGames();
+  render();
+}
+sb.auth.onAuthStateChange(() => boot());
+
+async function loadGames() {
+  const { data, error } = await sb.from('games').select('*').order('created_at', {ascending:false});
+  S.games = data || []; if (error) S.msg = error.message;
+}
+async function openGame(id) {
+  S.sel = id;
+  const [p, c] = await Promise.all([
+    sb.from('game_players').select('id,nation_name,color,manpower,profiles(username)').eq('game_id', id),
+    sb.from('counties').select('id,owner_id,county_definitions(name,features,county_resources(resource))').eq('game_id', id)
+  ]);
+  S.msg = p.error?.message || c.error?.message || '';
+  S.players = p.data || [];
+  S.counties = (c.data || []).sort((a,b) => a.county_definitions.name.localeCompare(b.county_definitions.name,'hu'));
+  render();
+}
+async function rpc(fn, args, after) {
+  const { error } = await sb.rpc(fn, args);
+  if (error) { S.msg = error.message; render(); } else { S.msg = ''; await (after ? after() : openGame(S.sel)); }
+}
+
+/* ---------- műveletek ---------- */
+async function login(reg) {
+  const email = $('em').value, password = $('pw').value;
+  const r = reg
+    ? await sb.auth.signUp({ email, password, options:{ data:{ username: $('un').value } } })
+    : await sb.auth.signInWithPassword({ email, password });
+  if (r.error) $('lmsg').textContent = r.error.message;
+  else if (reg) $('lmsg').textContent = 'Sikeres regisztráció – ha kér, erősítsd meg az e-mailt, aztán lépj be.';
+}
+async function createGame() {
+  const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet a játéknak'; return render(); }
+  const { data, error } = await sb.rpc('admin_create_game', {
+    p_name: name, p_speed: Number($('gs').value) || 1, p_victory_points: $('gv').value ? Number($('gv').value) : null });
+  if (error) { S.msg = error.message; return render(); }
+  S.msg = ''; await loadGames(); await openGame(data);
+}
+const setStatus = s => rpc('admin_set_game_status', {p_game:S.sel, p_status:s}, async () => { await loadGames(); await openGame(S.sel); });
+async function delGame() {
+  if (!confirm('Biztosan törlöd a játékot? Ez végleges.')) return;
+  const { error } = await sb.from('games').delete().eq('id', S.sel);
+  if (error) S.msg = error.message; else { S.sel = null; await loadGames(); }
+  render();
+}
+const assign = (cid, pid) => rpc('admin_assign_county', {p_county:cid, p_player:pid || null});
+const removePlayer = id => confirm('Eltávolítod a játékost?') && rpc('admin_remove_player', {p_player:id});
+
+/* ---------- megjelenítés ---------- */
+function renderLogin() {
+  $('app').innerHTML = `<div class="card" style="max-width:360px"><h2>Bejelentkezés</h2>
+    <input id="un" placeholder="Felhasználónév (csak regisztrációhoz)"><br>
+    <input id="em" placeholder="E-mail"><br><input id="pw" type="password" placeholder="Jelszó"><br>
+    <button onclick="login(false)">Belépek</button><button onclick="login(true)">Regisztrálok</button>
+    <p id="lmsg" class="err"></p></div>`;
+}
+function render() {
+  const g = S.games.find(x => x.id === S.sel);
+  let h = `<p>${esc(S.profile?.username)} <button onclick="sb.auth.signOut()">Kilépés</button></p>`;
+  if (!S.profile?.is_admin) {
+    $('app').innerHTML = h + '<p class="err">Nincs admin jogosultságod (állítsd be SQL-ből az is_admin mezőt).</p>'; return;
+  }
+  h += `<div class="card"><h2>Új játék indítása</h2><div class="row">
+    <input id="gn" placeholder="Játék neve">
+    <label>Sebesség ×<input id="gs" type="number" step="0.5" min="0.5" value="1" style="width:70px"></label>
+    <label>Győzelmi pont<input id="gv" type="number" placeholder="opc." style="width:80px"></label>
+    <button onclick="createGame()">Létrehozás</button></div>${S.msg && !g ? `<p class="err">${esc(S.msg)}</p>` : ''}</div>`;
+  h += `<div class="card"><h2>Játékok</h2><table><tr><th>Név</th><th>Állapot</th><th>Sebesség</th><th>Létrehozva</th><th></th></tr>` +
+    (S.games.map(x => `<tr><td>${esc(x.name)}</td><td>${ST[x.status]}</td><td>×${x.speed_multiplier}</td>
+      <td>${new Date(x.created_at).toLocaleString('hu-HU')}</td><td><button onclick="openGame('${x.id}')">Megnyitás</button></td></tr>`).join('')
+      || '<tr><td colspan="5">Még nincs játék.</td></tr>') + `</table></div>`;
+  if (g) {
+    const cnt = id => S.counties.filter(c => c.owner_id === id).length;
+    h += `<div class="card"><h2>${esc(g.name)} <span class="chip">${ST[g.status]}</span></h2><div class="row">
+      <button onclick="setStatus('running')" ${g.status==='running'?'disabled':''}>▶ Indítás</button>
+      <button onclick="setStatus('paused')" ${g.status!=='running'?'disabled':''}>⏸ Szünet</button>
+      <button onclick="setStatus('finished')" ${g.status==='finished'?'disabled':''}>■ Lezárás</button>
+      <button onclick="openGame('${g.id}')">↻ Frissítés</button>
+      <button onclick="delGame()" style="color:#b00020">Játék törlése</button></div>
+      ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
+      <h3>Játékosok (${S.players.length})</h3><table><tr><th>Nemzet</th><th>Felhasználó</th><th>Vármegye</th><th>Munkaerő</th><th></th></tr>` +
+      (S.players.map(p => `<tr><td><span style="background:${esc(p.color)};display:inline-block;width:12px;height:12px;margin-right:6px"></span>${esc(p.nation_name)}</td>
+        <td>${esc(p.profiles?.username)}</td><td>${cnt(p.id)}</td><td>${Math.floor(p.manpower)}</td>
+        <td><button onclick="removePlayer('${p.id}')">Eltávolít</button></td></tr>`).join('')
+        || '<tr><td colspan="5">Még nincs csatlakozott játékos.</td></tr>') +
+      `</table><h3>Vármegyék (${S.counties.length})</h3><table><tr><th>Vármegye</th><th>Termel</th><th>Egyéb</th><th>Tulajdonos</th></tr>` +
+      S.counties.map(c => { const d = c.county_definitions;
+        return `<tr><td>${esc(d.name)}</td><td>${d.county_resources.map(r => `<span class="chip">${RES[r.resource]}</span>`).join('')}</td>
+          <td>${esc(d.features.join(', '))}</td><td><select onchange="assign('${c.id}', this.value)">
+          <option value="">– gazdátlan –</option>` +
+          S.players.map(p => `<option value="${p.id}" ${p.id===c.owner_id?'selected':''}>${esc(p.nation_name)}</option>`).join('') +
+          `</select></td></tr>`; }).join('') + `</table></div>`;
+  }
+  $('app').innerHTML = h;
+}
+boot();
+</script>
+</body>
+</html>
