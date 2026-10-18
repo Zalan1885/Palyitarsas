@@ -12,6 +12,8 @@
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,Arial,sans-serif}
   h1,h2,h3{font-family:Georgia,'Times New Roman',serif;margin:.2em 0}
   input,select,button{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+  input{color:#2a2119;-webkit-text-fill-color:#2a2119;caret-color:#2a2119;background:#fff}
+  .mask{-webkit-text-security:disc;text-security:disc}
   input:focus,select:focus{outline:2px solid var(--gold);border-color:var(--gold)}
   button{cursor:pointer}button:hover:not(:disabled){filter:brightness(.96)}button:disabled{opacity:.5;cursor:default}
   .btn{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
@@ -119,7 +121,8 @@ function huErr(m) {
   return m;
 }
 function setMsg(t, bad = true) { const m = $('amsg'); if (m) { m.textContent = t; m.className = 'hint ' + (bad ? 'err' : 'okm'); } }
-function renderAuth() {
+function renderAuth(force) {
+  if (!force && $('un')) return;
   const reg = authMode === 'register', offs = (S.offices.length ? S.offices : DEMO.offices);
   $('app').innerHTML = `<div class="auth"><div class="hero"><h1>Pályi-játék</h1>
     <p><i>Nagy-Magyarország, 1851.</i> A Habsburgok megbuktak, a Pályi-kormány most építi újra az országot. Vállalj tisztséget, termelj, kereskedj, építkezz – és vigyázz a határokra.</p>
@@ -127,16 +130,20 @@ function renderAuth() {
     <div class="offs">${offs.map(o => `<span><span class="dot" style="background:${o.color}"></span> ${esc(o.name)}</span>`).join('')}</div></div>
     <div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div>
     <label class="field"><span>Felhasználónév</span><input id="un" autocomplete="off" maxlength="24" oninput="checkName()"></label><div id="nhint" class="hint"></div>
-    <label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" style="-webkit-text-security:disc;text-security:disc">
-      <button class="btn ghost" type="button" onclick="togglePw()" title="Jelszó mutatása">👁</button></div></label>
-    ${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" style="-webkit-text-security:disc;text-security:disc"></label>` : ''}
+    <label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" >
+      <button class="btn ghost eye" type="button" onclick="togglePw()" title="Jelszó takarása / mutatása">🙈 Takar</button></div></label>
+    ${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" ></label>` : ''}
     <button id="go" class="btn" style="width:100%;margin-top:6px" onclick="submitAuth()">${reg ? 'Fiók létrehozása' : 'Belépés'}</button>
     <p id="amsg" class="hint"></p>
     <p style="text-align:center;margin:8px 0 0"><a href="#" onclick="demoStart();return false">Kipróbálom bejelentkezés nélkül (demó)</a></p></div></div>`;
   ['un','pw','pw2'].forEach(id => $(id) && ($(id).onkeydown = e => e.key === 'Enter' && submitAuth()));
 }
-function setMode(m) { authMode = m; renderAuth(); }
-function togglePw() { ['pw','pw2'].forEach(id => { const el = $(id); if (el) el.style.webkitTextSecurity = el.style.webkitTextSecurity === 'none' ? 'disc' : 'none'; }); }
+function setMode(m) { authMode = m; renderAuth(true); }
+function togglePw() {
+  const on = !$('pw').classList.contains('mask');
+  ['pw','pw2','np','np2'].forEach(id => $(id)?.classList.toggle('mask', on));
+  document.querySelectorAll('.eye').forEach(x => x.textContent = on ? '👁 Mutat' : '🙈 Takar');
+}
 function checkName() {
   const h = $('nhint'); if (!h || authMode !== 'register') return;
   clearTimeout(nameTimer); const u = $('un').value.trim();
@@ -173,8 +180,8 @@ const logout = () => { S.sel = null; if (S.demo) { S.demo = false; S.games = [];
 /* ---------- fiók: jelszócsere ---------- */
 function renderAccount() {
   $('app').innerHTML = header() + `<main><div class="card" style="max-width:420px"><h2>Jelszó módosítása</h2>
-    <label class="field"><span>Új jelszó</span><input id="np" type="text" autocomplete="off" style="-webkit-text-security:disc;text-security:disc;width:100%"></label>
-    <label class="field"><span>Új jelszó újra</span><input id="np2" type="text" autocomplete="off" style="-webkit-text-security:disc;text-security:disc;width:100%"></label>
+    <label class="field"><span>Új jelszó</span><input id="np" type="text" autocomplete="off" style="width:100%"></label>
+    <label class="field"><span>Új jelszó újra</span><input id="np2" type="text" autocomplete="off" style="width:100%"></label>
     <div class="row"><button class="btn" onclick="changePw()">Mentés</button><button class="btn ghost" onclick="renderList()">Vissza</button></div><p id="amsg" class="hint"></p></div></main>`;
 }
 async function changePw() {
