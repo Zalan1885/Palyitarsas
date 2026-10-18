@@ -86,13 +86,16 @@ async function boot() {
   S.user = session.user;
   const { data } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).single();
   S.profile = data || {};
-  const [o, b, d] = await Promise.all([
+  const [o, b, d, r] = await Promise.all([
     sb.from('offices').select('*').order('sort'),
     sb.from('building_types').select('key,name'),
-    sb.from('county_definitions').select('name,start_office')]);
+    sb.from('county_definitions').select('id,name,features,start_office'),
+    sb.from('county_resources').select('definition_id,resource')]);
   S.offices = o.data || [];
   S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name]));
   S.defs = d.data || [];
+  S.cres = {}; (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
+  S.msg = o.error?.message || d.error?.message || r.error?.message || '';
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
@@ -167,9 +170,9 @@ async function submitAuth() {
   try {
     const email = toEmail(u);
     if (reg) {
-      const r = await sb.auth.signUp({ email, password:pw, options:{ data:{ username:u } } });
+      const r = await sb.rpc('register_user', { p_username:u, p_email:email, p_password:pw });
       if (r.error) throw r.error;
-      if (!r.data.session) { const l = await sb.auth.signInWithPassword({ email, password:pw }); if (l.error) throw l.error; }
+      const l = await sb.auth.signInWithPassword({ email, password:pw }); if (l.error) throw l.error;
     } else {
       const r = await sb.auth.signInWithPassword({ email, password:pw }); if (r.error) throw r.error;
     }
@@ -263,10 +266,20 @@ async function doJoin() {
 async function loadState() {
   if (S.demo) return;
   const [p, c] = await Promise.all([
-    sb.from('game_players').select('id,office,nation_name,color,profile_id,profiles(username)').eq('game_id', S.sel),
-    sb.from('counties').select('id,owner_id,county_definitions(name,features,county_resources(resource)),buildings(building_type,level,status)').eq('game_id', S.sel)]);
+    sb.from('game_players').select('id,office,nation_name,color,profile_id').eq('game_id', S.sel),
+    sb.from('counties').select('id,owner_id,definition_id').eq('game_id', S.sel)]);
   S.msg = p.error?.message || c.error?.message || '';
-  S.players = p.data || []; S.counties = c.data || [];
+  const ids = (c.data || []).map(x => x.id), pids = (p.data || []).map(x => x.profile_id).filter(Boolean);
+  const [b, pr] = await Promise.all([
+    ids.length ? sb.from('buildings').select('county_id,building_type,level,status').in('county_id', ids) : { data:[] },
+    pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] }]);
+  const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
+  const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
+  S.players = (p.data || []).map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
+  S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
+    county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
+    buildings:(b.data || []).filter(y => y.county_id === x.id) }));
+  if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket ehhez a játékhoz (futott a seed_counties.sql?).';
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
 }
 async function openGame(id) {
