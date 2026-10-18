@@ -32,7 +32,7 @@
 <script>
 const POS = {"Fiume - város": {"left": "1.5px", "top": "380.5px"}, "Modrus-Fiume": {"left": "1.5px", "top": "360.5px"}, "Lika-Krbava": {"left": "30.5px", "top": "415.5px"}, "Zágráb": {"left": "60.5px", "top": "329.5px"}, "Varasd": {"left": "84.5px", "top": "298.5px"}, "Belovár-Kőrós": {"left": "127.5px", "top": "317.5px"}, "Pozsega": {"left": "154.5px", "top": "366.5px"}, "Verőcze": {"left": "187.5px", "top": "342.5px"}, "Szerém": {"left": "261px", "top": "391.5px"}, "Baranya": {"left": "222.5px", "top": "303.5px"}, "Tolna": {"left": "239.5px", "top": "258.5px"}, "Somogy": {"left": "165.5px", "top": "255.5px"}, "Zala": {"left": "122.5px", "top": "232.5px"}, "Vas": {"left": "111.5px", "top": "194px"}, "Veszprém": {"left": "188.5px", "top": "193.5px"}, "Fejér": {"left": "244.5px", "top": "194.5px"}, "Komárom": {"left": "220.5px", "top": "147.5px"}, "Esztergom": {"left": "264.5px", "top": "149.5px"}, "Győr": {"left": "197.5px", "top": "161.5px"}, "Sopron": {"left": "131.5px", "top": "152.5px"}, "Moson": {"left": "160px", "top": "136.5px"}, "Pozsony": {"left": "171.5px", "top": "89.5px"}, "Nyitra": {"left": "180.5px", "top": "60.5px"}, "Bars": {"left": "257.5px", "top": "79.5px"}, "Hont": {"left": "283.5px", "top": "105.5px"}, "Zólyom": {"left": "300.96px", "top": "64.5px"}, "Trencsén": {"left": "223.5px", "top": "9.5px"}, "Árva": {"left": "310.5px", "top": "1.5px"}, "Liptó": {"left": "310.5px", "top": "34.5px"}, "Szepes": {"left": "367px", "top": "15.5px"}, "Sáros": {"left": "408px", "top": "16.5px"}, "Zemplén": {"left": "423px", "top": "22.5px"}, "Ung": {"left": "478.5px", "top": "48px"}, "Bereg": {"left": "500px", "top": "64.5px"}, "Szatmár": {"left": "495.5px", "top": "136.5px"}, "Szabolcs": {"left": "428.5px", "top": "112.5px"}, "Hajdú": {"left": "413.5px", "top": "158.5px"}, "Nógrád": {"left": "301.5px", "top": "92px"}, "Borsod": {"left": "368.5px", "top": "107.86px"}, "Heves": {"left": "342.5px", "top": "139.5px"}, "Jász-Nagykun-Szolnok": {"left": "344.5px", "top": "185.5px"}, "Pest-Pilis-Solt-Kiskun": {"left": "282.5px", "top": "167px"}, "Csongrád": {"left": "343.5px", "top": "266px"}, "Csanád": {"left": "387.5px", "top": "287.5px"}, "Békés": {"left": "387px", "top": "229.5px"}, "Bács-Bodrog": {"left": "292.5px", "top": "306.5px"}, "Torontál": {"left": "368.5px", "top": "318.5px"}, "Temes": {"left": "417.5px", "top": "325.5px"}, "Hunyad": {"left": "516.5px", "top": "305px"}, "Arad": {"left": "418.5px", "top": "273px"}, "Bihar": {"left": "430.92px", "top": "191.5px"}, "Szilágy": {"left": "508.5px", "top": "185px"}, "Szolnok-Doboka": {"left": "571.5px", "top": "179.5px"}, "Máramaros": {"left": "559.5px", "top": "78.5px"}, "Beszterce-Naszód": {"left": "626px", "top": "181px"}, "Kolozs": {"left": "531px", "top": "233px"}, "Torda-Aranyos": {"left": "533.5px", "top": "268px"}, "Alsó-Fehér": {"left": "550.5px", "top": "291px"}, "Szeben": {"left": "585.5px", "top": "332px"}, "Fogaras": {"left": "647px", "top": "331.5px"}, "Kis-Küküllő": {"left": "610.5px", "top": "286.5px"}, "Udvarhely": {"left": "665.5px", "top": "269.5px"}, "Háromszék": {"left": "715px", "top": "300.5px"}, "Csík": {"left": "694px", "top": "220px"}, "Maros-Torda": {"left": "628.5px", "top": "225.5px"}, "Budapest": {"left": "299.5px", "top": "192px"}, "Ugocsa": {"left": "537px", "top": "121.5px"}, "Krassó-Szőrény": {"left": "453.5px", "top": "331.5px"}, "Gömör-és-Kis-Hont": {"left": "350.5px", "top": "65px"}, "Abaúj-Torna": {"left": "395px", "top": "75.5px"}, "Túrócz": {"left": "283.5px", "top": "41.5px"}, "Nagy-Küküllő": {"left": "620.5px", "top": "305px"}, "Brassó": {"left": "703px", "top": "322px"}};
 const EMAIL_DOMAIN = 'jatek.local';   // a felhasználónévből ebből lesz az e-mail
-const sb = supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo');
+const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -58,7 +58,9 @@ async function boot() {
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
-sb.auth.onAuthStateChange(ev => { if (['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(ev)) boot(); });
+const safeBoot = () => boot().catch(e => { renderLogin(); $('lmsg').textContent = 'A Supabase nem érhető el ebben a környezetben (' + e.message + '). Próbáld a Demó módot.'; });
+if (sb) sb.auth.onAuthStateChange(ev => { if (['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(ev)) safeBoot(); });
+else setTimeout(renderLogin, 0);
 
 async function loadGames() {
   const { data } = await sb.from('games').select('*').order('created_at', {ascending:false});
@@ -70,23 +72,46 @@ async function loadGames() {
 /* ---------- belépés ---------- */
 function renderLogin() {
   $('app').innerHTML = `<div class="card" style="max-width:340px"><h2>Pályi-játék</h2>
-    <input id="un" placeholder="Felhasználónév"><br><input id="pw" type="password" placeholder="Jelszó"><br>
+    <input id="un" placeholder="Felhasználónév" autocomplete="off"><br>
+    <input id="pw" type="text" autocomplete="off" placeholder="Jelszó" style="-webkit-text-security:disc;text-security:disc">
+    <button onclick="const s=$('pw').style;s.webkitTextSecurity=s.webkitTextSecurity==='none'?'disc':'none'" title="Jelszó mutatása">👁</button><br>
     <button onclick="login(false)">Belépés</button> <button onclick="login(true)">Regisztráció</button>
+    <button onclick="demoStart()">Demó mód</button>
     <p id="lmsg" class="err"></p></div>`;
   $('pw').onkeydown = e => e.key === 'Enter' && login(false);
 }
 async function login(reg) {
-  const u = $('un').value.trim(), password = $('pw').value;
-  if (!u || password.length < 6) { $('lmsg').textContent = 'Adj meg felhasználónevet és legalább 6 karakteres jelszót.'; return; }
-  const email = toEmail(u);
-  const r = reg ? await sb.auth.signUp({ email, password, options:{ data:{ username:u } } })
-                : await sb.auth.signInWithPassword({ email, password });
-  if (r.error) $('lmsg').textContent = r.error.message;
-  else if (reg && !r.data.session) $('lmsg').textContent = 'Regisztrálva. Lépj be.';
+  const m = $('lmsg'); m.textContent = '';
+  try {
+    if (!sb) { m.textContent = 'A Supabase nem érhető el ebben a környezetben. Próbáld a Demó módot.'; return; }
+    const u = $('un').value.trim(), password = $('pw').value;
+    if (!u || password.length < 6) { m.textContent = 'Adj meg felhasználónevet és legalább 6 karakteres jelszót.'; return; }
+    const email = toEmail(u);
+    m.textContent = reg ? 'Regisztráció…' : 'Belépés…';
+    const r = reg ? await sb.auth.signUp({ email, password, options:{ data:{ username:u } } })
+                  : await sb.auth.signInWithPassword({ email, password });
+    if (r.error) m.textContent = r.error.message;
+    else if (reg && !r.data.session) m.textContent = 'Regisztrálva. Most lépj be.';
+  } catch (e) { m.textContent = 'Hálózati hiba: ' + e.message; }
 }
-const logout = () => { S.sel = null; sb.auth.signOut(); };
-const bar = () => `<p><b>${esc(S.profile.username)}</b> ${S.profile.is_admin ? '<span class="chip">admin</span>' : ''}
+const logout = () => { S.sel = null; if (S.demo) { S.demo = false; S.games = []; return renderLogin(); } sb.auth.signOut(); };
+const bar = () => `<p><b>${esc(S.profile.username)}</b> ${S.profile.is_admin ? '<span class="chip">admin</span>' : ''}${S.demo ? '<span class="chip">DEMÓ – helyi adatok, nincs mentés</span>' : ''}
   <button onclick="logout()">Kilépés</button></p>`;
+
+/* ---------- demó mód (Supabase nélkül) ---------- */
+const DEMO = {"counties": {"Fiume - város": {"r": [], "f": ["kikötő"]}, "Modrus-Fiume": {"r": [], "f": ["élelmiszeripar", "gépgyártás", "kikötő"]}, "Lika-Krbava": {"r": ["wood"], "f": ["kikötő"]}, "Zágráb": {"r": [], "f": ["könnyűipar", "élelmiszeripar"]}, "Varasd": {"r": ["wine", "wood", "coal"], "f": []}, "Belovár-Kőrós": {"r": ["wine", "wood", "corn"], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Pozsega": {"r": ["wood", "wheat", "corn"], "f": []}, "Verőcze": {"r": ["wood", "wheat"], "f": []}, "Szerém": {"r": ["wine", "wood", "wheat"], "f": []}, "Baranya": {"r": ["wine", "coal"], "f": ["könnyűipar", "vas-és fémipar", "egyetem"]}, "Tolna": {"r": ["wine"], "f": []}, "Somogy": {"r": ["wine", "sugar", "livestock"], "f": []}, "Zala": {"r": ["wine"], "f": []}, "Vas": {"r": ["sugar", "iron_ore"], "f": ["gépgyártás"]}, "Veszprém": {"r": ["wine", "corn"], "f": []}, "Fejér": {"r": ["wheat", "livestock"], "f": ["gépgyártás"]}, "Komárom": {"r": ["wine", "coal"], "f": []}, "Esztergom": {"r": ["coal"], "f": []}, "Győr": {"r": [], "f": ["gépgyártás"]}, "Sopron": {"r": ["sugar"], "f": []}, "Moson": {"r": ["wheat"], "f": ["gépgyártás"]}, "Pozsony": {"r": ["sugar"], "f": ["könnyűipar", "egyetem"]}, "Nyitra": {"r": ["sugar"], "f": []}, "Bars": {"r": ["wood", "wheat"], "f": []}, "Hont": {"r": [], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Zólyom": {"r": ["gold"], "f": ["könnyűipar"]}, "Trencsén": {"r": ["livestock", "coal"], "f": []}, "Árva": {"r": ["wood", "coal"], "f": []}, "Liptó": {"r": ["wood"], "f": []}, "Szepes": {"r": ["gold", "livestock", "iron_ore"], "f": []}, "Sáros": {"r": ["wood", "gold"], "f": []}, "Zemplén": {"r": ["wine"], "f": []}, "Ung": {"r": ["wood", "livestock"], "f": []}, "Bereg": {"r": ["wine", "wheat"], "f": []}, "Szatmár": {"r": ["wheat", "corn", "livestock"], "f": []}, "Szabolcs": {"r": [], "f": ["egyetem"]}, "Hajdú": {"r": ["livestock"], "f": ["könnyűipar", "élelmiszeripar", "gépgyártás"]}, "Nógrád": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Borsod": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Heves": {"r": ["wine", "coal"], "f": []}, "Jász-Nagykun-Szolnok": {"r": ["wheat", "corn"], "f": ["gépgyártás"]}, "Pest-Pilis-Solt-Kiskun": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Csongrád": {"r": ["wheat", "livestock"], "f": ["könnyűipar"]}, "Csanád": {"r": ["sugar", "wheat", "corn", "livestock"], "f": []}, "Békés": {"r": ["wheat", "corn", "livestock"], "f": []}, "Bács-Bodrog": {"r": ["wine", "sugar", "wheat", "corn", "livestock"], "f": []}, "Torontál": {"r": ["wheat", "corn"], "f": []}, "Temes": {"r": ["coal"], "f": ["gépgyártás"]}, "Hunyad": {"r": ["gold", "livestock", "iron_ore"], "f": ["vas-és fémipar"]}, "Arad": {"r": ["wine", "wheat", "livestock"], "f": ["gépgyártás"]}, "Bihar": {"r": ["sugar", "livestock"], "f": ["élelmiszeripar"]}, "Szilágy": {"r": ["wood", "wheat", "corn"], "f": []}, "Szolnok-Doboka": {"r": ["wood", "wheat"], "f": ["vas-és fémipar"]}, "Máramaros": {"r": ["gold", "livestock"], "f": []}, "Beszterce-Naszód": {"r": ["wood"], "f": []}, "Kolozs": {"r": [], "f": ["könnyűipar", "egyetem"]}, "Torda-Aranyos": {"r": ["gold", "livestock"], "f": []}, "Alsó-Fehér": {"r": ["wine", "gold", "livestock"], "f": []}, "Szeben": {"r": ["coal"], "f": ["vas-és fémipar"]}, "Fogaras": {"r": ["livestock"], "f": []}, "Kis-Küküllő": {"r": ["wine", "wheat"], "f": []}, "Udvarhely": {"r": ["wheat", "corn"], "f": []}, "Háromszék": {"r": ["wood"], "f": []}, "Csík": {"r": ["wood"], "f": []}, "Maros-Torda": {"r": ["livestock"], "f": ["könnyűipar", "gépgyártás"]}, "Budapest": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Ugocsa": {"r": [], "f": []}, "Krassó-Szőrény": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Gömör-és-Kis-Hont": {"r": ["iron_ore"], "f": []}, "Abaúj-Torna": {"r": ["gold"], "f": ["vas-és fémipar"]}, "Túrócz": {"r": ["wood"], "f": []}, "Nagy-Küküllő": {"r": ["wood", "wheat"], "f": []}, "Brassó": {"r": [], "f": ["könnyűipar"]}}, "start": {"Pest-Pilis-Solt-Kiskun": "nagyur", "Budapest": "nagyur", "Nógrád": "nagyur", "Hont": "nagyur", "Somogy": "penzugy", "Belovár-Kőrós": "penzugy", "Zala": "penzugy", "Szatmár": "hadugy", "Szilágy": "hadugy", "Szabolcs": "hadugy", "Trencsén": "igazsag", "Nyitra": "igazsag", "Pozsony": "igazsag", "Gömör-és-Kis-Hont": "belugy", "Abaúj-Torna": "belugy", "Zemplén": "belugy", "Alsó-Fehér": "gazdasagi", "Kis-Küküllő": "gazdasagi", "Nagy-Küküllő": "gazdasagi"}, "offices": [{"key": "nagyur", "name": "Nagyúr", "color": "#c0392b", "duty": "Vezeti a közös célokat, elősegíti a belső egységet.", "ability": "Rendeletet adhat ki, amit mindenki betartani köteles; a Változás akciónál 5 mozgást végezhet."}, {"key": "penzugy", "name": "Pénzügyminiszter", "color": "#27ae60", "duty": "Fenntartja a kereskedelmet és az árstabilitást.", "ability": "Felső és alsó határt szabhat a kereskedelmi árakra; egyszer vétózhat egy akciót."}, {"key": "hadugy", "name": "Hadügyminiszter", "color": "#2c3e50", "duty": "Külső támadás esetén haditervet dolgoz ki, irányítja a hadműveleteket.", "ability": "Kötelező hadi fejlesztéseket rendelhet el; +1 szénért 3 egységet állíthat ki."}, {"key": "igazsag", "name": "Igazságügy-miniszter", "color": "#8e44ad", "duty": "A bírósági kérdésekben dönt.", "ability": "+1 fáért +1 munkaerőt helyezhet fel a munkaerő akciónál."}, {"key": "belugy", "name": "Belügyminiszter", "color": "#e67e22", "duty": "Belső konfliktusok békés megoldása.", "ability": "Egyszer vétózhatja a Nagyúr rendeletét; +1 téglával 3 dolgot építhet egyszerre."}, {"key": "gazdasagi", "name": "Gazdasági biztos", "color": "#16a085", "duty": "A gazdasági stabilitást biztosítja.", "ability": "Termeléskor +1-et ad a dobáshoz, de 1 vagy 6 esetén nem termel."}]};
+function demoStart() {
+  S.demo = true; S.user = { id:'demo' }; S.profile = { username:'admin (demó)', is_admin:true };
+  S.offices = DEMO.offices; S.btypes = {}; S.mySeats = {};
+  S.defs = Object.entries(DEMO.start).map(([name, start_office]) => ({ name, start_office }));
+  S.games = [{ id:'demo', name:'Demó játék', status:'lobby', speed_multiplier:1 }];
+  S.players = DEMO.offices.map(o => ({ id:'p_' + o.key, office:o.key, nation_name:o.name, color:o.color, profile_id:null, profiles:null }));
+  S.counties = Object.keys(POS).map(n => { const d = DEMO.counties[n] || { r:[], f:[] };
+    return { id:'c_' + n, owner_id:DEMO.start[n] ? 'p_' + DEMO.start[n] : null, buildings:[],
+      county_definitions:{ name:n, features:d.f, county_resources:d.r.map(resource => ({ resource })) } }; });
+  S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
+  renderList();
+}
 
 /* ---------- játéklista (admin + játékos) ---------- */
 function renderList() {
@@ -108,6 +133,7 @@ function renderList() {
   $('app').innerHTML = h;
 }
 async function createGame() {
+  if (S.demo) return openGame('demo');
   const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet a játéknak'; return renderList(); }
   const test = $('gt').checked;
   const { data, error } = await sb.rpc('admin_create_game', { p_name:name, p_speed:Number($('gs').value) || 1, p_victory_points:$('gv').value ? Number($('gv').value) : null });
@@ -137,6 +163,7 @@ async function doJoin() {
 
 /* ---------- játék nézet + térkép ---------- */
 async function loadState() {
+  if (S.demo) return;
   const [p, c] = await Promise.all([
     sb.from('game_players').select('id,office,nation_name,color,profile_id,profiles(username)').eq('game_id', S.sel),
     sb.from('counties').select('id,owner_id,county_definitions(name,features,county_resources(resource)),buildings(building_type,level,status)').eq('game_id', S.sel)]);
@@ -146,15 +173,23 @@ async function loadState() {
 }
 async function openGame(id) {
   S.sel = id; await loadState(); renderGame();
+  if (S.demo) return;
   if (S.ch) sb.removeChannel(S.ch);
   S.ch = sb.channel('g' + id).on('postgres_changes', { event:'*', schema:'public', table:'counties', filter:'game_id=eq.' + id },
     async () => { await loadState(); renderGame(); }).subscribe();
 }
-const rpc = async (fn, args) => { const { error } = await sb.rpc(fn, args); S.msg = error ? error.message : ''; await loadGames(); await loadState(); renderGame(); };
+const rpc = async (fn, args) => {
+  if (S.demo) {
+    if (fn === 'admin_set_game_status') S.games[0].status = args.p_status;
+    if (fn === 'admin_assign_county') { const c = S.counties.find(x => x.id === args.p_county); if (c) c.owner_id = args.p_player; }
+    S.msg = ''; return renderGame();
+  }
+  const { error } = await sb.rpc(fn, args); S.msg = error ? error.message : ''; await loadGames(); await loadState(); renderGame(); };
 const setStatus = s => rpc('admin_set_game_status', { p_game:S.sel, p_status:s });
 const seedTest = () => rpc('admin_seed_offices', { p_game:S.sel });
 const assign = (cid, pid) => rpc('admin_assign_county', { p_county:cid, p_player:pid || null });
 async function delGame() {
+  if (S.demo) { S.sel = null; return renderList(); }
   if (!confirm('Biztosan törlöd a játékot? Ez végleges.')) return;
   const { error } = await sb.from('games').delete().eq('id', S.sel);
   S.msg = error?.message || ''; await loadGames(); renderList();
@@ -189,8 +224,9 @@ function buildMap() {
     box.onclick = e => { pick(n); tip(n, e); };
     $('map').appendChild(box); els[n] = box;
     (svgCache[n] ??= fetch('svg/' + n + '.svg').then(r => r.text()).catch(() => '')).then(t => {
-      if (!t) return;
-      box.appendChild(new DOMParser().parseFromString(t, 'image/svg+xml').querySelector('svg')); paint(n);
+      box.appendChild(t ? new DOMParser().parseFromString(t, 'image/svg+xml').querySelector('svg')
+        : new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg" width="26" height="18" fill="#d3d3d3"><rect width="26" height="18" rx="4" stroke="#fff"/></svg>', 'image/svg+xml').querySelector('svg'));
+      paint(n);
     });
   });
 }
