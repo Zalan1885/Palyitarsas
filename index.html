@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="icon.png" type="image/png">
+<title>Pályi-játék</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;margin:0;padding:12px;color:#222}
+  input,select,button{padding:7px 10px;font-size:14px;margin:2px}
+  button{cursor:pointer}
+  table{border-collapse:collapse;width:100%;margin:6px 0}
+  th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left;font-size:14px}
+  .card{border:1px solid #ccc;border-radius:8px;padding:12px;margin:10px 0;max-width:1100px}
+  .err{color:#b00020}.chip{display:inline-block;background:#eef;border-radius:10px;padding:1px 8px;margin:1px;font-size:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .dot{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:6px;vertical-align:-2px}
+  #wrap{overflow:auto;border:1px solid #ccc;border-radius:8px;max-height:80vh}
+  #map{position:relative;width:1400px;height:1000px}
+  .county-svg{position:absolute;filter:drop-shadow(0 4px 4px rgba(0,0,0,.1));transition:transform .2s}
+  .county-svg:hover{transform:scale(1.03);cursor:pointer}
+  #tooltip{position:absolute;background:#333;color:#fff;padding:8px 12px;border-radius:8px;display:none;z-index:1000;font-size:13px;line-height:1.45;max-width:320px;pointer-events:none}
+  .office{display:block;border:1px solid #ddd;border-radius:8px;padding:8px;margin:6px 0}
+  .office.off{opacity:.45}
+</style>
+</head>
+<body>
+<div id="app">Betöltés…</div>
+<div id="tooltip"></div>
+
+<script>
+const POS = {"Fiume - város": {"left": "1.5px", "top": "380.5px"}, "Modrus-Fiume": {"left": "1.5px", "top": "360.5px"}, "Lika-Krbava": {"left": "30.5px", "top": "415.5px"}, "Zágráb": {"left": "60.5px", "top": "329.5px"}, "Varasd": {"left": "84.5px", "top": "298.5px"}, "Belovár-Kőrós": {"left": "127.5px", "top": "317.5px"}, "Pozsega": {"left": "154.5px", "top": "366.5px"}, "Verőcze": {"left": "187.5px", "top": "342.5px"}, "Szerém": {"left": "261px", "top": "391.5px"}, "Baranya": {"left": "222.5px", "top": "303.5px"}, "Tolna": {"left": "239.5px", "top": "258.5px"}, "Somogy": {"left": "165.5px", "top": "255.5px"}, "Zala": {"left": "122.5px", "top": "232.5px"}, "Vas": {"left": "111.5px", "top": "194px"}, "Veszprém": {"left": "188.5px", "top": "193.5px"}, "Fejér": {"left": "244.5px", "top": "194.5px"}, "Komárom": {"left": "220.5px", "top": "147.5px"}, "Esztergom": {"left": "264.5px", "top": "149.5px"}, "Győr": {"left": "197.5px", "top": "161.5px"}, "Sopron": {"left": "131.5px", "top": "152.5px"}, "Moson": {"left": "160px", "top": "136.5px"}, "Pozsony": {"left": "171.5px", "top": "89.5px"}, "Nyitra": {"left": "180.5px", "top": "60.5px"}, "Bars": {"left": "257.5px", "top": "79.5px"}, "Hont": {"left": "283.5px", "top": "105.5px"}, "Zólyom": {"left": "300.96px", "top": "64.5px"}, "Trencsén": {"left": "223.5px", "top": "9.5px"}, "Árva": {"left": "310.5px", "top": "1.5px"}, "Liptó": {"left": "310.5px", "top": "34.5px"}, "Szepes": {"left": "367px", "top": "15.5px"}, "Sáros": {"left": "408px", "top": "16.5px"}, "Zemplén": {"left": "423px", "top": "22.5px"}, "Ung": {"left": "478.5px", "top": "48px"}, "Bereg": {"left": "500px", "top": "64.5px"}, "Szatmár": {"left": "495.5px", "top": "136.5px"}, "Szabolcs": {"left": "428.5px", "top": "112.5px"}, "Hajdú": {"left": "413.5px", "top": "158.5px"}, "Nógrád": {"left": "301.5px", "top": "92px"}, "Borsod": {"left": "368.5px", "top": "107.86px"}, "Heves": {"left": "342.5px", "top": "139.5px"}, "Jász-Nagykun-Szolnok": {"left": "344.5px", "top": "185.5px"}, "Pest-Pilis-Solt-Kiskun": {"left": "282.5px", "top": "167px"}, "Csongrád": {"left": "343.5px", "top": "266px"}, "Csanád": {"left": "387.5px", "top": "287.5px"}, "Békés": {"left": "387px", "top": "229.5px"}, "Bács-Bodrog": {"left": "292.5px", "top": "306.5px"}, "Torontál": {"left": "368.5px", "top": "318.5px"}, "Temes": {"left": "417.5px", "top": "325.5px"}, "Hunyad": {"left": "516.5px", "top": "305px"}, "Arad": {"left": "418.5px", "top": "273px"}, "Bihar": {"left": "430.92px", "top": "191.5px"}, "Szilágy": {"left": "508.5px", "top": "185px"}, "Szolnok-Doboka": {"left": "571.5px", "top": "179.5px"}, "Máramaros": {"left": "559.5px", "top": "78.5px"}, "Beszterce-Naszód": {"left": "626px", "top": "181px"}, "Kolozs": {"left": "531px", "top": "233px"}, "Torda-Aranyos": {"left": "533.5px", "top": "268px"}, "Alsó-Fehér": {"left": "550.5px", "top": "291px"}, "Szeben": {"left": "585.5px", "top": "332px"}, "Fogaras": {"left": "647px", "top": "331.5px"}, "Kis-Küküllő": {"left": "610.5px", "top": "286.5px"}, "Udvarhely": {"left": "665.5px", "top": "269.5px"}, "Háromszék": {"left": "715px", "top": "300.5px"}, "Csík": {"left": "694px", "top": "220px"}, "Maros-Torda": {"left": "628.5px", "top": "225.5px"}, "Budapest": {"left": "299.5px", "top": "192px"}, "Ugocsa": {"left": "537px", "top": "121.5px"}, "Krassó-Szőrény": {"left": "453.5px", "top": "331.5px"}, "Gömör-és-Kis-Hont": {"left": "350.5px", "top": "65px"}, "Abaúj-Torna": {"left": "395px", "top": "75.5px"}, "Túrócz": {"left": "283.5px", "top": "41.5px"}, "Nagy-Küküllő": {"left": "620.5px", "top": "305px"}, "Brassó": {"left": "703px", "top": "322px"}};
+const EMAIL_DOMAIN = 'jatek.local';   // a felhasználónévből ebből lesz az e-mail
+const sb = supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo');
+const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
+const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const toEmail = u => u.includes('@') ? u.trim() : u.trim().toLowerCase() + '@' + EMAIL_DOMAIN;
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, taken:[], msg:'', ch:null};
+let els = {}; const svgCache = {};
+
+/* ---------- indulás ---------- */
+async function boot() {
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session) { S.user = null; return renderLogin(); }
+  S.user = session.user;
+  const { data } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).single();
+  S.profile = data || {};
+  const [o, b, d] = await Promise.all([
+    sb.from('offices').select('*').order('sort'),
+    sb.from('building_types').select('key,name'),
+    sb.from('county_definitions').select('name,start_office')]);
+  S.offices = o.data || [];
+  S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name]));
+  S.defs = d.data || [];
+  await loadGames();
+  S.sel ? await openGame(S.sel) : renderList();
+}
+sb.auth.onAuthStateChange(ev => { if (['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(ev)) boot(); });
+
+async function loadGames() {
+  const { data } = await sb.from('games').select('*').order('created_at', {ascending:false});
+  S.games = data || [];
+  const m = await sb.from('game_players').select('game_id,office').eq('profile_id', S.user.id);
+  S.mySeats = Object.fromEntries((m.data || []).map(x => [x.game_id, x.office]));
+}
+
+/* ---------- belépés ---------- */
+function renderLogin() {
+  $('app').innerHTML = `<div class="card" style="max-width:340px"><h2>Pályi-játék</h2>
+    <input id="un" placeholder="Felhasználónév"><br><input id="pw" type="password" placeholder="Jelszó"><br>
+    <button onclick="login(false)">Belépés</button> <button onclick="login(true)">Regisztráció</button>
+    <p id="lmsg" class="err"></p></div>`;
+  $('pw').onkeydown = e => e.key === 'Enter' && login(false);
+}
+async function login(reg) {
+  const u = $('un').value.trim(), password = $('pw').value;
+  if (!u || password.length < 6) { $('lmsg').textContent = 'Adj meg felhasználónevet és legalább 6 karakteres jelszót.'; return; }
+  const email = toEmail(u);
+  const r = reg ? await sb.auth.signUp({ email, password, options:{ data:{ username:u } } })
+                : await sb.auth.signInWithPassword({ email, password });
+  if (r.error) $('lmsg').textContent = r.error.message;
+  else if (reg && !r.data.session) $('lmsg').textContent = 'Regisztrálva. Lépj be.';
+}
+const logout = () => { S.sel = null; sb.auth.signOut(); };
+const bar = () => `<p><b>${esc(S.profile.username)}</b> ${S.profile.is_admin ? '<span class="chip">admin</span>' : ''}
+  <button onclick="logout()">Kilépés</button></p>`;
+
+/* ---------- játéklista (admin + játékos) ---------- */
+function renderList() {
+  S.sel = null; S.joinGame = null;
+  if (S.ch) { sb.removeChannel(S.ch); S.ch = null; }
+  const adm = S.profile.is_admin;
+  let h = bar();
+  if (adm) h += `<div class="card"><h2>Új játék indítása</h2><div class="row">
+    <input id="gn" placeholder="Játék neve">
+    <label>Sebesség ×<input id="gs" type="number" step="0.5" min="0.5" value="1" style="width:70px"></label>
+    <label>Győzelmi pont<input id="gv" type="number" placeholder="opc." style="width:80px"></label>
+    <label><input id="gt" type="checkbox" checked> Teszt: mind a 6 tisztség betöltése</label>
+    <button onclick="createGame()">Létrehozás</button></div></div>`;
+  h += `<div class="card"><h2>Játékok</h2><table><tr><th>Név</th><th>Állapot</th><th>Sebesség</th><th></th></tr>` +
+    (S.games.filter(g => adm || g.status !== 'finished' || S.mySeats[g.id]).map(g => `<tr><td>${esc(g.name)}</td><td>${ST[g.status]}</td><td>×${g.speed_multiplier}</td><td>` +
+      (adm || S.mySeats[g.id] ? `<button onclick="openGame('${g.id}')">Megnyitás${S.mySeats[g.id] ? ' (' + esc(S.offices.find(o => o.key === S.mySeats[g.id])?.name) + ')' : ''}</button>`
+        : g.status !== 'finished' ? `<button onclick="startJoin('${g.id}')">Csatlakozás</button>` : '') + `</td></tr>`).join('')
+      || '<tr><td colspan="4">Még nincs játék.</td></tr>') + `</table>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}</div>`;
+  $('app').innerHTML = h;
+}
+async function createGame() {
+  const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet a játéknak'; return renderList(); }
+  const test = $('gt').checked;
+  const { data, error } = await sb.rpc('admin_create_game', { p_name:name, p_speed:Number($('gs').value) || 1, p_victory_points:$('gv').value ? Number($('gv').value) : null });
+  if (error) { S.msg = error.message; return renderList(); }
+  if (test) { const r = await sb.rpc('admin_seed_offices', { p_game:data }); if (r.error) S.msg = r.error.message; }
+  await loadGames(); await openGame(data);
+}
+
+/* ---------- csatlakozás: tisztség választás ---------- */
+async function startJoin(id) {
+  S.joinGame = id; S.msg = '';
+  S.taken = (await sb.rpc('taken_offices', { p_game:id })).data || [];
+  $('app').innerHTML = bar() + `<div class="card"><h2>Válassz tisztséget</h2>` + S.offices.map(o => {
+    const t = S.taken.includes(o.key), cs = S.defs.filter(d => d.start_office === o.key).map(d => d.name).join(', ');
+    return `<label class="office ${t ? 'off' : ''}"><input type="radio" name="off" value="${o.key}" ${t ? 'disabled' : ''}>
+      <span class="dot" style="background:${o.color}"></span><b>${esc(o.name)}</b>${t ? ' (foglalt)' : ''}<br>
+      <small>${esc(o.duty)} <i>${esc(o.ability)}</i><br>Kezdő vármegyék: ${esc(cs)}</small></label>`; }).join('') +
+    `<button onclick="doJoin()">Csatlakozom</button> <button onclick="renderList()">Mégse</button><p id="jmsg" class="err"></p></div>`;
+}
+async function doJoin() {
+  const key = document.querySelector('input[name=off]:checked')?.value;
+  if (!key) { $('jmsg').textContent = 'Válassz egy tisztséget.'; return; }
+  const { error } = await sb.rpc('join_game', { p_game:S.joinGame, p_office:key });
+  if (error) { $('jmsg').textContent = error.message; return; }
+  await loadGames(); await openGame(S.joinGame);
+}
+
+/* ---------- játék nézet + térkép ---------- */
+async function loadState() {
+  const [p, c] = await Promise.all([
+    sb.from('game_players').select('id,office,nation_name,color,profile_id,profiles(username)').eq('game_id', S.sel),
+    sb.from('counties').select('id,owner_id,county_definitions(name,features,county_resources(resource)),buildings(building_type,level,status)').eq('game_id', S.sel)]);
+  S.msg = p.error?.message || c.error?.message || '';
+  S.players = p.data || []; S.counties = c.data || [];
+  S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
+}
+async function openGame(id) {
+  S.sel = id; await loadState(); renderGame();
+  if (S.ch) sb.removeChannel(S.ch);
+  S.ch = sb.channel('g' + id).on('postgres_changes', { event:'*', schema:'public', table:'counties', filter:'game_id=eq.' + id },
+    async () => { await loadState(); renderGame(); }).subscribe();
+}
+const rpc = async (fn, args) => { const { error } = await sb.rpc(fn, args); S.msg = error ? error.message : ''; await loadGames(); await loadState(); renderGame(); };
+const setStatus = s => rpc('admin_set_game_status', { p_game:S.sel, p_status:s });
+const seedTest = () => rpc('admin_seed_offices', { p_game:S.sel });
+const assign = (cid, pid) => rpc('admin_assign_county', { p_county:cid, p_player:pid || null });
+async function delGame() {
+  if (!confirm('Biztosan törlöd a játékot? Ez végleges.')) return;
+  const { error } = await sb.from('games').delete().eq('id', S.sel);
+  S.msg = error?.message || ''; await loadGames(); renderList();
+}
+
+function renderGame() {
+  const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
+  const adm = S.profile.is_admin, cnt = id => S.counties.filter(c => c.owner_id === id).length;
+  const keep = $('pick')?.innerHTML || '';
+  let h = bar() + `<div class="card"><div class="row"><button onclick="renderList()">← Játékok</button>
+    <h2 style="margin:0">${esc(g.name)}</h2><span class="chip">${ST[g.status]}</span>` +
+    (adm ? `<button onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button>
+    <button onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button>
+    <button onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button>
+    <button onclick="seedTest()">Teszt tisztségek</button>
+    <button onclick="delGame()" style="color:#b00020">Törlés</button>` : '') + `</div>
+    ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
+    <div class="row" style="margin-top:8px">` + (S.players.map(p => `<span class="chip" style="background:${esc(p.color)}22">
+      <span class="dot" style="background:${esc(p.color)}"></span>${esc(p.nation_name)} – ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} – ${cnt(p.id)} megye</span>`).join('')
+      || 'Még nincs játékos.') + `</div>
+    <div id="pick" style="margin-top:8px;font-size:14px">${keep || 'Kattints egy vármegyére a részletekért.'}</div></div>
+    <div id="wrap"><div id="map"></div></div>`;
+  $('app').innerHTML = h; buildMap();
+}
+function buildMap() {
+  els = {};
+  Object.keys(POS).forEach(n => {
+    const box = document.createElement('div');
+    box.className = 'county-svg'; box.style.left = POS[n].left; box.style.top = POS[n].top;
+    box.onmouseenter = e => tip(n, e); box.onmousemove = moveTip;
+    box.onmouseleave = () => $('tooltip').style.display = 'none';
+    box.onclick = e => { pick(n); tip(n, e); };
+    $('map').appendChild(box); els[n] = box;
+    (svgCache[n] ??= fetch('svg/' + n + '.svg').then(r => r.text()).catch(() => '')).then(t => {
+      if (!t) return;
+      box.appendChild(new DOMParser().parseFromString(t, 'image/svg+xml').querySelector('svg')); paint(n);
+    });
+  });
+}
+function paint(n) {
+  const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
+  els[n]?.querySelector('svg')?.setAttribute('fill', p ? p.color : '#d3d3d3');
+}
+function info(n) {
+  const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
+  const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
+  const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.status === 'constructing' ? ' (épül)' : '')).join(', ') || 'nincs';
+  return `<b>${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt ülés)') : 'senkié'}<br>
+    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}`;
+}
+function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
+function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
+function pick(n) {
+  const c = S.byName[n]; let h = info(n);
+  if (S.profile.is_admin && c) h += `<br>Tulajdonos módosítása: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
+    S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
+  $('pick').innerHTML = h;
+}
+</script>
+</body>
+</html>
