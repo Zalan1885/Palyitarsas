@@ -82,6 +82,13 @@ const EMAIL_DOMAIN = 'jatek.local';   // a felhasználónévből ebből lesz az 
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
+/* --- Épület ikonok: laktanya → gyar.svg, vár → var.svg, város → varos.svg --- */
+const BICON = {
+  'laktanya': 'svg/gyar.svg',
+  'var':      'svg/var.svg',
+  'varos':    'svg/varos.svg'
+};
+Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
@@ -372,9 +379,35 @@ function buildMap() {
     });
   });
 }
+const _norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function biconFor(b) {
+  const byKey  = BICON[_norm(b.building_type)];
+  const byName = BICON[_norm(S.btypes[b.building_type])];
+  return byKey || byName || null;
+}
 function paint(n) {
+  const box = els[n]; if (!box) return;
   const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
-  els[n]?.querySelector('svg')?.setAttribute('fill', p ? p.color : '#d3d3d3');
+  const svg = box.querySelector('svg');
+  if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
+
+  // Kész épületek ikonjai a vármegye jobb felső sarkában
+  let iconBox = box.querySelector('.bicons');
+  if (!iconBox) {
+    iconBox = document.createElement('div');
+    iconBox.className = 'bicons';
+    iconBox.style.cssText = 'position:absolute;top:0;right:0;display:flex;gap:1px;pointer-events:none;z-index:3;padding:1px';
+    box.appendChild(iconBox);
+  }
+  const icons = [], seen = new Set();
+  for (const b of (c?.buildings || [])) {
+    if (b.completes_at && new Date(b.completes_at) > Date.now()) continue; // épül, ne mutassuk még
+    const src = biconFor(b);
+    if (src && !seen.has(src)) { icons.push(src); seen.add(src); }
+  }
+  iconBox.innerHTML = icons.map(src =>
+    `<img src="${src}" alt="" style="width:18px;height:18px;object-fit:contain;filter:drop-shadow(0 1px 1px rgba(0,0,0,.6))">`
+  ).join('');
 }
 function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
