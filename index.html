@@ -48,7 +48,7 @@
   .offgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
   .office{border:2px solid var(--line);border-left-width:10px;border-radius:10px;padding:10px;background:#fff;cursor:pointer}
   .office.sel{border-color:var(--accent);background:#fbf1e3}.office.off{opacity:.45;cursor:not-allowed}
-  #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:72vh}
+  #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:60vh}
   #map{position:relative;width:1400px;height:1000px;transform-origin:0 0}
   .county-svg{position:absolute;filter:drop-shadow(0 3px 3px rgba(0,0,0,.12));transition:transform .15s}
   .county-svg:hover{transform:scale(1.04);cursor:pointer;z-index:5}
@@ -64,7 +64,10 @@
   .modal-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
   .mitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fff}
   .mitem .row{margin:4px 0;flex-wrap:wrap}
-  @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}}
+  #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  #action-bar .btn.active{outline:3px solid var(--gold);outline-offset:1px}
+  #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px}
+  @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:45vh}}
 </style>
 </head>
 <body>
@@ -89,7 +92,7 @@ const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[]};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], actionMode:null, actionSource:null, actionSourceName:null, actionTarget:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 /* ---------- indulás ---------- */
@@ -126,16 +129,12 @@ async function loadGames() {
   S.mySeats = Object.fromEntries((m.data || []).map(x => [x.game_id, x.office]));
 }
 
-/* ---------- belépés / regisztráció ---------- */
 function huErr(m) {
   m = String(m || '');
   if (/invalid login/i.test(m)) return 'Hibás felhasználónév vagy jelszó.';
   if (/already registered|already exists/i.test(m)) return 'Ez a felhasználónév (ékezetek nélkül is) már foglalt.';
-  if (/database error saving/i.test(m)) return 'Ez a felhasználónév foglalt vagy nem megengedett.';
   if (/at least|weak/i.test(m)) return 'A jelszó legalább 6 karakter legyen.';
-  if (/signups? (are )?(not allowed|disabled)/i.test(m)) return 'A regisztráció le van tiltva a Supabase beállításaiban.';
-  if (/email not confirmed/i.test(m)) return 'A Supabase-ben be van kapcsolva az e-mail megerősítés – kapcsold ki (Authentication → Providers → Email).';
-  if (/rate limit|too many|security purposes/i.test(m)) return 'Túl sok próbálkozás, várj egy percet.';
+  if (/rate limit|too many/i.test(m)) return 'Túl sok próbálkozás, várj egy percet.';
   if (/failed to fetch|network/i.test(m)) return 'Nincs kapcsolat a szerverrel.';
   return m;
 }
@@ -150,7 +149,7 @@ function renderAuth(force) {
     <div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div>
     <label class="field"><span>Felhasználónév</span><input id="un" autocomplete="off" maxlength="24" oninput="checkName()"></label><div id="nhint" class="hint"></div>
     <label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" >
-      <button class="btn ghost eye" type="button" onclick="togglePw()" title="Jelszó takarása / mutatása">🙈 Takar</button></div></label>
+      <button class="btn ghost eye" type="button" onclick="togglePw()">🙈 Takar</button></div></label>
     ${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" ></label>` : ''}
     <button id="go" class="btn" style="width:100%;margin-top:6px" onclick="submitAuth()">${reg ? 'Fiók létrehozása' : 'Belépés'}</button>
     <p id="amsg" class="hint"></p>
@@ -177,7 +176,7 @@ function checkName() {
 }
 async function submitAuth() {
   const reg = authMode === 'register', u = $('un').value.trim(), pw = $('pw').value;
-  if (!sb) return setMsg('A Supabase nem érhető el ebben a környezetben. Próbáld a demót.');
+  if (!sb) return setMsg('A Supabase nem érhető el.');
   if (!u || !pw) return setMsg('Add meg a felhasználónevet és a jelszót.');
   if (reg && !NAME_RE.test(u)) return setMsg('A felhasználónév 3–24 karakter: betűk, számok, _ . -');
   if (pw.length < 6) return setMsg('A jelszó legalább 6 karakter legyen.');
@@ -196,7 +195,6 @@ async function submitAuth() {
 }
 const logout = () => { S.sel = null; if (S.demo) { S.demo = false; S.games = []; return renderAuth(); } sb.auth.signOut(); };
 
-/* ---------- fiók: jelszócsere ---------- */
 function renderAccount() {
   $('app').innerHTML = header() + `<main><div class="card" style="max-width:420px"><h2>Jelszó módosítása</h2>
     <label class="field"><span>Új jelszó</span><input id="np" type="text" autocomplete="off" style="width:100%"></label>
@@ -210,11 +208,10 @@ async function changePw() {
   const { error } = await sb.auth.updateUser({ password:a });
   error ? setMsg(huErr(error.message)) : setMsg('A jelszó módosítva.', false);
 }
-const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.demo ? '<span class="chip" style="color:var(--ink)">DEMÓ – nincs mentés</span>' : ''}
+const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.demo ? '<span class="chip" style="color:var(--ink)">DEMÓ</span>' : ''}
   <span>${esc(S.profile.username)}</span>${S.profile.is_admin ? '<span class="chip" style="color:var(--ink)">admin</span>' : ''}
   ${S.demo ? '' : '<button onclick="renderAccount()">Jelszó</button>'}<button onclick="logout()">Kilépés</button></header>`;
 
-/* ---------- demó mód ---------- */
 function demoStart() {
   S.demo = true; S.user = { id:'demo' }; S.profile = { username:'admin (demó)', is_admin:true };
   S.offices = DEMO.offices; S.btypes = {}; S.mySeats = {};
@@ -228,7 +225,6 @@ function demoStart() {
   renderList();
 }
 
-/* ---------- játéklista ---------- */
 function renderList() {
   S.sel = null; S.joinGame = null;
   if (S.ch) { sb.removeChannel(S.ch); S.ch = null; }
@@ -260,7 +256,6 @@ async function createGame() {
   await loadGames(); await openGame(data);
 }
 
-/* ---------- csatlakozás ---------- */
 async function startJoin(id) {
   S.joinGame = id; S.pickOffice = null;
   S.taken = (await sb.rpc('taken_offices', { p_game:id })).data || [];
@@ -278,7 +273,7 @@ async function doJoin() {
   await loadGames(); await openGame(S.joinGame);
 }
 
-/* ---------- játék nézet + térkép ---------- */
+/* ---------- state betöltés ---------- */
 async function loadState() {
   if (S.demo) return;
   const [p, c] = await Promise.all([
@@ -289,13 +284,15 @@ async function loadState() {
   S.players = (p.data || []).map(x => ({ ...x, profiles:null }));
   if (S.profile.is_admin) { if (!S.players.some(x => x.id === S.actAs)) S.actAs = S.players[0]?.id || null; }
   else S.actAs = S.players.find(x => x.profile_id === S.user.id)?.id || null;
-  const [b, pr, pd, rs, mp, un] = await Promise.all([
+  const [b, pr, pd, rs, mp, un, bt, mv] = await Promise.all([
     ids.length ? sb.from('buildings').select('county_id,building_type,level,status,completes_at').in('county_id', ids) : { data:[] },
     pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] },
     sb.from('county_production').select('county_id,owner_id,resource,rate_per_hour,cap_amount,current_amount').eq('game_id', S.sel),
     S.actAs ? sb.from('player_resources').select('resource,amount').eq('player_id', S.actAs) : { data:[] },
     S.actAs ? sb.rpc('refresh_manpower', { p_player:S.actAs }) : { data:null },
-    sb.from('player_units').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x)]);
+    sb.from('player_units').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x),
+    sb.from('battles').select('*').eq('game_id', S.sel).eq('status', 'active').then(x => x.error ? { data:[] } : x),
+    sb.from('army_movements').select('*').eq('game_id', S.sel).eq('status', 'marching').then(x => x.error ? { data:[] } : x)]);
   if (pd.error || mp.error) S.msg = (pd.error || mp.error).message + ' – futott a 005_production_build.sql?';
   const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
   S.players = S.players.map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
@@ -303,11 +300,13 @@ async function loadState() {
   S.res = Object.fromEntries((rs.data || []).map(x => [x.resource, Number(x.amount)]));
   S.mp = mp.data || null; S.mpAt = Date.now();
   S.units = un.data || [];
+  S.battles = bt.data || [];
+  S.movements = mv.data || [];
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
     buildings:(b.data || []).filter(y => y.county_id === x.id) }));
-  if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket ehhez a játékhoz (futott a seed_counties.sql?).';
+  if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket (futott a seed_counties.sql?).';
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
 }
 async function openGame(id) {
@@ -316,7 +315,7 @@ async function openGame(id) {
   if (S.ch) sb.removeChannel(S.ch);
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
   S.ch = sb.channel('g' + id);
-  ['counties', 'buildings', 'game_players', 'player_resources', 'player_units'].forEach(tb =>
+  ['counties', 'buildings', 'game_players', 'player_resources', 'player_units', 'battles', 'army_movements'].forEach(tb =>
     S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
   S.ch.subscribe();
 }
@@ -332,7 +331,7 @@ const seedTest = () => rpc('admin_seed_offices', { p_game:S.sel });
 const assign = (cid, pid) => rpc('admin_assign_county', { p_county:cid, p_player:pid || null });
 async function delGame() {
   if (S.demo) { S.sel = null; return renderList(); }
-  if (!confirm('Biztosan törlöd a játékot? Ez végleges.')) return;
+  if (!confirm('Biztosan törlöd a játékot?')) return;
   const { error } = await sb.from('games').delete().eq('id', S.sel);
   S.msg = error?.message || ''; await loadGames(); renderList();
 }
@@ -345,14 +344,22 @@ function renderGame() {
     (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button>
     <button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button>
     <button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button>
-    <button class="btn ghost" onclick="seedTest()">Teszt tisztségek</button>
+    <button class="btn ghost" onclick="seedTest()">Teszt</button>
     <button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>
     ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
     <div class="row" style="margin-top:10px">` + (S.players.map(p => `<span class="chip" style="background:${esc(p.color)}26"><span class="dot" style="background:${esc(p.color)}"></span>
       ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} vármegye</span>`).join('') || 'Még nincs játékos.') + `</div>
     <div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>
     <div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div>
-    <div id="msz"><div id="map"></div></div></div></main>`;
+    <div id="msz"><div id="map"></div></div></div>
+    <div id="action-bar">
+      <button class="btn ${S.actionMode==='attack'?'active':''}" onclick="startAction('attack')">⚔ Támadás</button>
+      <button class="btn ${S.actionMode==='defend'?'active':''}" onclick="startAction('defend')">🛡 Védekezés</button>
+      <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')">→ Mozgatás</button>
+      <button class="btn ghost" onclick="cancelAction()" ${!S.actionMode?'style="display:none"':''}>✕ Mégse</button>
+      <span id="action-hint"></span>
+    </div>
+    </main>`;
   buildMap(); setZoom(Z);
   if (sc) { $('wrap').scrollLeft = sc[0]; $('wrap').scrollTop = sc[1]; }
   renderStatus(); renderPick();
@@ -385,16 +392,16 @@ function isLaktanya(b){ const k=_bKey(b),n=_bName(b); return ['laktanya','barrac
 function isVarOrVaros(b){ const k=_bKey(b),n=_bName(b); return ['var','varos','castle','city'].includes(k) || ['var','varos','vár','város','castle','city'].includes(n); }
 function isComplete(b){ return !b.completes_at || new Date(b.completes_at) <= Date.now(); }
 function isSameBType(stored, uiB){ return _bKey(stored)===_norm(uiB.key) || _bName(stored)===_norm(uiB.name); }
-function biconFor(b) {
-  const byKey  = BICON[_norm(b.building_type)];
-  const byName = BICON[_norm(S.btypes[b.building_type])];
-  return byKey || byName || null;
-}
+function biconFor(b) { return BICON[_norm(b.building_type)] || BICON[_norm(S.btypes[b.building_type])] || null; }
 function paint(n) {
   const box = els[n]; if (!box) return;
   const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
   const svg = box.querySelector('svg');
   if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
+  // battle indicator
+  const battleHere = (S.battles || []).find(b => b.county_id === c?.id && b.status === 'active');
+  box.style.boxShadow = battleHere ? '0 0 15px 5px rgba(220,0,0,.75)' : '';
+  // icons
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
     iconBox = document.createElement('div');
@@ -417,9 +424,10 @@ function paint(n) {
 function unitLine(u) {
   const ut = S.unitTypes.find(x => x.key === u.unit_type);
   const name = ut?.name || u.unit_type;
+  const hpPct = Math.round((u.hp_ratio || 1) * 100);
   const done = !u.completes_at || new Date(u.completes_at) <= Date.now();
   if (!done) return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
-  return `${u.amount}× ${name}`;
+  return `${u.amount}× ${name} <small>(${hpPct}% HP)</small>`;
 }
 function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
@@ -429,14 +437,17 @@ function info(n) {
   const unitStr = units.map(u => {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
     const ready = !u.completes_at || new Date(u.completes_at) <= Date.now();
-    return `${u.amount}× ${ut?.name || u.unit_type}${ready ? '' : ' (kik.)'}`;
+    const hpPct = Math.round((u.hp_ratio || 1) * 100);
+    return `${u.amount}× ${ut?.name || u.unit_type}${ready ? ` (${hpPct}%)` : ' (kik.)'}`;
   }).join(', ') || '–';
-  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt ülés)') : 'senkié'}<br>
-    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}<br>Katonaság: ${esc(unitStr)}`;
+  const battleHere = (S.battles || []).find(x => x.county_id === c.id && x.status === 'active');
+  const battleStr = battleHere ? `<br><b style="color:#b00020">⚔ CSATA FOLYIK</b>` : '';
+  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}<br>
+    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}<br>Katonaság: ${esc(unitStr)}${battleStr}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
 function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
-/* ---------- termelés + építkezés + toborzás ---------- */
+
 const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h ? h + 'ó ' : '') + (h || m ? m + 'p ' : '') + (s % 60) + 'mp'; };
 const num = x => (Math.floor(x * 10) / 10).toLocaleString('hu-HU');
 const liveAmt = r => Math.min(Number(r.cap_amount), Number(r.current_amount) + Number(r.rate_per_hour) * (Date.now() - S.prodAt) / 3.6e6);
@@ -444,10 +455,133 @@ const curMp = () => S.mp ? Math.max(S.mp.manpower, Math.min(S.mp.cap, S.mp.manpo
 const costHtml = cost => Object.entries(cost || {}).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
 const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_bonus * 100)}% termelés`, b.manpower_bonus > 0 && `+${b.manpower_bonus} munkaerő/óra`,
   b.defense_bonus > 0 && `+${Math.round(b.defense_bonus * 100)}% védelem`].filter(Boolean).join(', ') || '–';
-const refreshNow = async () => { if (S.sel) { await loadState(); renderGame(); } };
+const refreshNow = async () => {
+  if (!S.sel) return;
+  try { await sb.rpc('tick_military', {p_game:S.sel}); } catch(e){ console.warn('tick_military:', e.message); }
+  await loadState(); renderGame();
+};
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
-function pick(n) { S.picked = n; renderPick(); }
 
+/* ---------- pick: action mode figyelés ---------- */
+function pick(n) {
+  const c = S.byName[n];
+  if (S.actionMode && c) {
+    if (!S.actionSource) {
+      if (c.owner_id !== S.actAs) {
+        updateActionHint('Ez nem a te vármegyéd — válassz sajátot forrásként.');
+        return;
+      }
+      S.actionSource = c.id; S.actionSourceName = n;
+      updateActionHint(`Forrás: ${n}. Kattints a cél vármegyére.`);
+      return;
+    }
+    if (c.id !== S.actionSource) {
+      S.actionTarget = c.id;
+      updateActionHint(`Cél: ${n}. Válaszd ki az egységeket.`);
+      openSendModal(S.actionSource, c.id, S.actionMode);
+      return;
+    }
+  }
+  S.picked = n; renderPick();
+}
+function startAction(mode) {
+  S.actionMode = mode; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null;
+  const hints = { attack: '⚔ Támadás: válassz saját forrás vármegyét.', defend: '🛡 Védekezés: válassz saját forrás vármegyét.', move: '→ Mozgatás: válassz saját forrás vármegyét.' };
+  updateActionHint(hints[mode] || '');
+  renderGame();
+}
+function cancelAction() {
+  S.actionMode = null; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null;
+  updateActionHint('');
+  renderGame();
+}
+function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
+
+/* ---------- send modal ---------- */
+async function openSendModal(srcCountyId, tgtCountyId, action) {
+  if ($('send-modal')) return;
+  const units = (S.units || []).filter(u =>
+    u.county_id === srcCountyId && u.player_id === S.actAs && u.status === 'ready' &&
+    (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+  if (!units.length) { alert('Nincs mozgatható egység a forrásban.'); cancelAction(); return; }
+
+  const tgtBattle = (S.battles || []).find(b => b.county_id === tgtCountyId && b.status === 'active');
+  if (action === 'attack' && tgtBattle) { alert('Már folyik csata a célban.'); return; }
+
+  const srcC = S.counties.find(x => x.id === srcCountyId);
+  const tgtC = S.counties.find(x => x.id === tgtCountyId);
+  const srcName = srcC?.county_definitions.name || '?';
+  const tgtName = tgtC?.county_definitions.name || '?';
+  const tgtOwner = S.players.find(x => x.id === tgtC?.owner_id);
+  const isEnemy = tgtC?.owner_id && tgtC.owner_id !== S.actAs;
+
+  let html = `<div class="modal-backdrop" id="send-modal" onclick="if(event.target===this)closeSendModal()">
+    <div class="modal">
+      <button class="close" onclick="closeSendModal()">✕</button>
+      <h2>${action === 'attack' ? '⚔ Támadás' : action === 'defend' ? '🛡 Védekezés' : '→ Mozgatás'}</h2>
+      <p><b>${esc(srcName)}</b> → <b>${esc(tgtName)}</b>${tgtOwner ? ' (' + esc(tgtOwner.nation_name) + ')' : ' (senkié)'}</p>
+      <div>`;
+  for (const u of units) {
+    const ut = S.unitTypes.find(x => x.key === u.unit_type);
+    const hpPct = Math.round((u.hp_ratio || 1) * 100);
+    html += `<div class="row" style="margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:6px">
+      <span class="grow"><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount} <small>(${hpPct}% HP · ${ut?.hp || '?'} HP/db)</small></span>
+      <input type="number" id="send-${u.id}" min="0" max="${u.amount}" value="${u.amount}" style="width:80px">
+    </div>`;
+  }
+  html += `</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" onclick="confirmSend('${action}')">Küldés</button>
+        <button class="btn ghost" onclick="closeSendModal()">Mégse</button>
+      </div>
+      <p id="send-msg" class="hint" style="font-size:12px;color:var(--muted)">A vár +2 védelmet ad a védőnek, és +1 támadást a támadónak (ha a forrásban vár van).</p>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function closeSendModal() { $('send-modal')?.remove(); }
+async function confirmSend(action) {
+  const src = S.actionSource, tgt = S.actionTarget;
+  if (!src || !tgt) return closeSendModal();
+  const units = (S.units || []).filter(u =>
+    u.county_id === src && u.player_id === S.actAs && u.status === 'ready' &&
+    (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+  const sends = units.map(u => ({ id: u.id, amount: Number($('send-' + u.id)?.value) || 0 })).filter(x => x.amount > 0);
+  if (!sends.length) { $('send-msg').textContent = 'Válassz legalább 1 egységet.'; return; }
+
+  const tgtBattle = (S.battles || []).find(b => b.county_id === tgt && b.status === 'active');
+  const sqlAction = (action === 'attack' && !tgtBattle) ? 'attack' : 'move';
+
+  let ok = 0, errs = [];
+  for (const s of sends) {
+    const { error } = await sb.rpc('send_army', { p_unit_id: s.id, p_to_county: tgt, p_amount: s.amount, p_action: sqlAction, p_player: S.actAs });
+    if (error) errs.push(error.message); else ok++;
+  }
+  closeSendModal();
+  if (errs.length) alert('Hibák:\n' + errs.join('\n'));
+  if (ok) { cancelAction(); await refreshNow(); }
+}
+
+/* ---------- split ---------- */
+async function splitUnit(unitId) {
+  const u = (S.units || []).find(x => x.id === unitId);
+  if (!u) return;
+  const amt = prompt(`Hány egységet válasszunk le? (1-${u.amount - 1})`, Math.min(5, u.amount - 1));
+  if (!amt) return;
+  const n = Number(amt);
+  if (!n || n < 1 || n >= u.amount) return alert('Érvénytelen mennyiség.');
+  const { error } = await sb.rpc('split_units', { p_unit_id: unitId, p_split_amount: n, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await refreshNow();
+}
+async function retreat(battleId) {
+  if (!confirm('Visszavonulsz? Az egységeid fele életpontja elveszik.')) return;
+  const { error } = await sb.rpc('retreat_from_battle', { p_battle_id: battleId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await refreshNow();
+}
+
+/* ---------- status panel ---------- */
 function renderStatus() {
   const el = $('status'); if (!el) return;
   if (S.demo) { el.innerHTML = ''; return; }
@@ -462,15 +596,33 @@ function renderStatus() {
     (adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 mindenből (teszt)</button>` : '') + `</div>`;
 }
 
+/* ---------- pick panel ---------- */
 function renderPick() {
   const el = $('pick'); if (!el) return;
   const n = S.picked;
   if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'; return; }
   const c = S.byName[n]; let h = info(n);
   if (!c) { el.innerHTML = h; return; }
+
+  // battle info
+  const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
+  if (battleHere) {
+    const atk = S.players.find(x => x.id === battleHere.attacker_id);
+    const def = S.players.find(x => x.id === battleHere.defender_id);
+    h += `<hr><div style="padding:10px;background:#fee;border:1px solid #b00020;border-radius:8px">
+      <b style="color:#b00020">⚔ Csata folyik!</b><br>
+      Támadó: <b>${esc(atk?.nation_name || '?')}</b> · Védő: <b>${esc(def?.nation_name || '?')}</b><br>
+      Hátralévő: <b data-end="${battleHere.ends_at}">…</b>
+      ${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id)
+        ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>`
+        : ''}
+    </div>`;
+  }
+
   const adm = S.profile.is_admin, mine = c.owner_id && (adm || c.owner_id === S.actAs);
   if (adm) h += `<br>Tulajdonos módosítása: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
     S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
+
   if (!S.demo && mine) {
     const g = S.games.find(x => x.id === S.sel), rows = S.prod.filter(r => r.county_id === c.id);
     h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ')
@@ -480,7 +632,7 @@ function renderPick() {
     const laktanyaAny    = c.buildings.find(isLaktanya);
     const laktanyaReady  = laktanyaAny && isComplete(laktanyaAny);
 
-    h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut – indítsd el (▶ Indítás).</div>` : '');
+    h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut.</div>` : '');
     c.buildings.filter(b => !isComplete(b)).forEach(b => {
       h += `<div>${esc(S.btypes[b.building_type] || b.building_type)}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
     h += S.btAll.filter(uiB => !c.buildings.some(st => isSameBType(st, uiB))).map(uiB => {
@@ -496,17 +648,17 @@ function renderPick() {
     if (!S.unitTypes.length) {
       h += `<div class="err" style="font-size:13px">Az egységtípusok nincsenek betöltve – futtattad a 007_units.sql-t?</div>`;
     } else if (!laktanyaAny) {
-      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya ebben a vármegyében – előbb építs egyet.</div>`;
+      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya – előbb építs egyet.</div>`;
     } else if (!laktanyaReady) {
       const left = (new Date(laktanyaAny.completes_at) - Date.now()) / 1000;
-      h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT(left)}</b>. Toborzás csak elkészülte után.</div>`;
+      h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT(left)}</b>.</div>`;
     } else {
       h += S.unitTypes.map(ut => {
         const cost = ut.cost || {};
         const costStr = Object.entries(cost).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
         const canAfford = Object.entries(cost).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= ut.manpower_cost;
         const disabled = (!canAfford || g.status !== 'running') ? 'disabled' : '';
-        return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}×<br>
+        return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}× · ${ut.hp || '?'} HP<br>
           <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))} · mozgás: 1 vármegye / ${fmtT(ut.move_seconds)}</small></span>
           <input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}>
           <button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button>
@@ -514,11 +666,35 @@ function renderPick() {
       }).join('');
     }
 
+    // Katonaság
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
-    if (countyUnits.length) h += `<div style="margin-top:8px"><b>Katonaság:</b> ${countyUnits.map(unitLine).join(', ')}</div>`;
+    if (countyUnits.length) {
+      h += `<hr><b>Katonaság</b>`;
+      for (const u of countyUnits) {
+        const ut = S.unitTypes.find(x => x.key === u.unit_type);
+        const hpPct = Math.round((u.hp_ratio || 1) * 100);
+        const training = u.completes_at && new Date(u.completes_at) > Date.now();
+        const myUnit = u.player_id === S.actAs;
+        h += `<div class="row" style="margin:4px 0">
+          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b> <small>(${hpPct}% HP${training ? ' · kiképzés alatt' : ''})</small></span>
+          ${myUnit && !training && u.amount > 1 ? `<button class="btn ghost" onclick="splitUnit('${u.id}')">Hasítás</button>` : ''}
+        </div>`;
+      }
+    }
+
+    // Mozgásban
+    const inTransit = (S.movements || []).filter(m => m.player_id === S.actAs);
+    if (inTransit.length) {
+      h += `<hr><b>Mozgásban</b>`;
+      for (const m of inTransit) {
+        const toC = S.counties.find(x => x.id === m.to_county);
+        const ut = S.unitTypes.find(x => x.key === m.unit_type);
+        h += `<div style="font-size:13px;color:var(--muted)">${m.amount}× ${esc(ut?.name || m.unit_type)} → ${esc(toC?.county_definitions.name || '?')} (<span data-end="${m.arrive_at}">…</span>)${m.action === 'attack' ? ' <b style="color:#b00020">[támadás]</b>' : ''}</div>`;
+      }
+    }
 
     const built = S.btAll.filter(uiB => c.buildings.some(st => isSameBType(st, uiB))).map(b => esc(b.name)).join(', ');
-    if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}. Típusonként csak 1 építhető.</div>`;
+    if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}. Típusonként csak 1.</div>`;
   }
   el.innerHTML = h; tick();
 }
@@ -550,19 +726,14 @@ function tick() {
   });
 }
 
-/* ---------- piac (modal) ---------- */
+/* ---------- piac ---------- */
 async function openMarket() {
   if (S.demo) { alert('A piac demó módban nem elérhető.'); return; }
-  if (!S.actAs) return;
-  if ($('market-backdrop')) return;
+  if (!S.actAs || $('market-backdrop')) return;
   document.body.insertAdjacentHTML('beforeend',
     `<div class="modal-backdrop" id="market-backdrop" onclick="if(event.target===this)closeMarket()">
-      <div class="modal">
-        <button class="close" onclick="closeMarket()">✕</button>
-        <h2>🏪 Piac</h2>
-        <div id="market-content">Betöltés…</div>
-      </div>
-    </div>`);
+      <div class="modal"><button class="close" onclick="closeMarket()">✕</button>
+        <h2>🏪 Piac</h2><div id="market-content">Betöltés…</div></div></div>`);
   S.marketTab = 'browse';
   await loadMarketAndRender();
 }
@@ -571,27 +742,22 @@ async function loadMarket() {
   if (S.demo || !S.actAs || !S.sel) return;
   const [l, o] = await Promise.all([
     sb.from('market_listings').select('*').eq('game_id', S.sel).order('created_at', { ascending:false }),
-    sb.from('market_offers').select('*').eq('game_id', S.sel).order('created_at', { ascending:false })
-  ]);
+    sb.from('market_offers').select('*').eq('game_id', S.sel).order('created_at', { ascending:false })]);
   if (l.error) S.msg = l.error.message;
   if (o.error) S.msg = o.error.message;
-  S.marketListings = l.data || [];
-  S.marketOffers = o.data || [];
+  S.marketListings = l.data || []; S.marketOffers = o.data || [];
 }
 async function loadMarketAndRender() { await loadMarket(); renderMarket(); }
 async function marketTab(t) { S.marketTab = t; await loadMarketAndRender(); }
 const resName = r => RES[r] || r;
-const listingTitle = l => l.kind === 'sell'
-  ? `Kínál: ${l.amount}× ${resName(l.resource)}`
-  : `Keres: ${l.amount}× ${resName(l.resource)}`;
+const listingTitle = l => l.kind === 'sell' ? `Kínál: ${l.amount}× ${resName(l.resource)}` : `Keres: ${l.amount}× ${resName(l.resource)}`;
 function playerName(pid) { const p = S.players.find(x => x.id === pid); return p ? esc(p.nation_name) : '(?)'; }
-
 function renderMarket() {
   const el = $('market-content'); if (!el) return;
   const tab = S.marketTab || 'browse', me = S.actAs;
   let h = `<div class="modal-tabs">
     <button class="${tab==='browse'?'on':''}" onclick="marketTab('browse')">Hirdetések</button>
-    <button class="${tab==='mine'?'on':''}" onclick="marketTab('mine')">Saját hirdetéseim</button>
+    <button class="${tab==='mine'?'on':''}" onclick="marketTab('mine')">Saját</button>
     <button class="${tab==='offers'?'on':''}" onclick="marketTab('offers')">Ajánlataim</button>
     <button class="${tab==='new'?'on':''}" onclick="marketTab('new')">➕ Új</button>
   </div>`;
@@ -601,7 +767,6 @@ function renderMarket() {
   else h += renderMarketNew();
   el.innerHTML = h;
 }
-
 function renderMarketBrowse(me) {
   const others = (S.marketListings || []).filter(l => l.status === 'open' && l.author_id !== me);
   if (!others.length) return '<p style="color:var(--muted)">Nincs más nyitott hirdetés.</p>';
@@ -610,8 +775,7 @@ function renderMarketBrowse(me) {
     return `<div class="mitem">
       <div class="row"><b class="grow">${listingTitle(l)}</b><small>${playerName(l.author_id)}</small></div>
       <div style="color:var(--muted);font-size:12px;margin:4px 0">${new Date(l.created_at).toLocaleString('hu-HU')}</div>
-      ${my
-        ? `<div class="chip" style="background:#e8f5e9">Ajánlatod: ${my.give_amount}× ${resName(my.give_resource)} ↔ ${my.get_amount}× ${resName(my.get_resource)} (függő)</div>`
+      ${my ? `<div class="chip" style="background:#e8f5e9">Ajánlatod: ${my.give_amount}× ${resName(my.give_resource)} ↔ ${my.get_amount}× ${resName(my.get_resource)}</div>`
         : `<button class="btn ghost" onclick="marketOfferForm('${l.id}')">Ajánlat tétel</button>
            <div id="offer-form-${l.id}" style="display:none;margin-top:8px">
              <div class="row">
@@ -620,28 +784,18 @@ function renderMarketBrowse(me) {
                </label>
                <input id="of-amt-${l.id}" type="number" min="1" value="1" style="width:90px">
                <button class="btn" onclick="marketSubmitOffer('${l.id}')">Küldés</button>
-             </div>
-             <div style="font-size:12px;color:var(--muted);margin-top:4px">
-               ${l.kind === 'sell'
-                 ? `Te adod a fenti nyersanyagot letétbe. Ő adja neked: ${l.amount}× ${resName(l.resource)}.`
-                 : `Te adod neki: ${l.amount}× ${resName(l.resource)} (letétbe). Te kapod a fenti nyersanyagot.`}
-             </div>
-           </div>`}
+             </div></div>`}
     </div>`;
   }).join('');
 }
-function marketOfferForm(lid) {
-  const el = $('offer-form-' + lid);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
+function marketOfferForm(lid) { const el = $('offer-form-' + lid); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 async function marketSubmitOffer(lid) {
   const res = $('of-res-' + lid)?.value, amt = Number($('of-amt-' + lid)?.value);
-  if (!amt || amt < 1) return alert('Adj meg érvényes mennyiséget.');
+  if (!amt || amt < 1) return alert('Adj meg mennyiséget.');
   const { error } = await sb.rpc('market_offer', { p_listing: lid, p_player: S.actAs, p_resource: res, p_amount: amt });
   if (error) return alert(error.message);
   await loadMarketAndRender(); await refreshNow();
 }
-
 function renderMarketMine(me) {
   const mine = (S.marketListings || []).filter(l => l.author_id === me);
   if (!mine.length) return '<p style="color:var(--muted)">Még nincs hirdetésed.</p>';
@@ -649,25 +803,18 @@ function renderMarketMine(me) {
     const pending = (S.marketOffers || []).filter(o => o.listing_id === l.id && o.status === 'pending');
     const badge = { open: '🟢 nyitott', done: '✅ kész', cancelled: '⚪ visszavonva' }[l.status] || l.status;
     let h = `<div class="mitem">
-      <div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>
-      <div style="color:var(--muted);font-size:12px">${new Date(l.created_at).toLocaleString('hu-HU')}</div>`;
-    if (l.status === 'open') {
-      h += `<div class="row" style="margin-top:6px"><button class="btn danger" onclick="marketCancel('${l.id}')">Hirdetés visszavonása</button></div>`;
-    }
+      <div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>`;
+    if (l.status === 'open') h += `<div class="row" style="margin-top:6px"><button class="btn danger" onclick="marketCancel('${l.id}')">Visszavonás</button></div>`;
     if (pending.length) {
-      h += `<div style="margin-top:10px"><b>Beérkezett ajánlatok:</b></div>`;
       h += pending.map(o => `<div class="row" style="margin:6px 0;padding:8px;background:#f8f4e8;border-radius:6px">
         <span class="grow">${playerName(o.bidder_id)}: ad <b>${o.give_amount}× ${resName(o.give_resource)}</b>, kap <b>${o.get_amount}× ${resName(o.get_resource)}</b></span>
         <button class="btn" onclick="marketDecide('${o.id}', true)">Elfogad</button>
         <button class="btn ghost" onclick="marketDecide('${o.id}', false)">Elutasít</button>
       </div>`).join('');
-    } else if (l.status === 'open') {
-      h += `<div style="color:var(--muted);font-size:13px;margin-top:6px">Nincs függő ajánlat.</div>`;
     }
     return h + '</div>';
   }).join('');
 }
-
 function renderMarketOffers(me) {
   const mine = (S.marketOffers || []).filter(o => o.bidder_id === me);
   if (!mine.length) return '<p style="color:var(--muted)">Még nincs ajánlatod.</p>';
@@ -675,52 +822,45 @@ function renderMarketOffers(me) {
     const l = (S.marketListings || []).find(x => x.id === o.listing_id);
     const st = { pending: '⏳ függő', accepted: '✅ elfogadva', declined: '❌ elutasítva', withdrawn: '⚪ visszavonva' }[o.status] || o.status;
     return `<div class="mitem">
-      <div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt hirdetés)'}</b><span class="chip">${st}</span></div>
+      <div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt)'}</b><span class="chip">${st}</span></div>
       <div style="font-size:13px">Adok: <b>${o.give_amount}× ${resName(o.give_resource)}</b> · Kapok: <b>${o.get_amount}× ${resName(o.get_resource)}</b></div>
       ${o.status === 'pending' ? `<div class="row" style="margin-top:6px"><button class="btn ghost" onclick="marketWithdraw('${o.id}')">Visszavonás</button></div>` : ''}
     </div>`;
   }).join('');
 }
-
 function renderMarketNew() {
   return `<div class="mitem">
-    <label style="display:block;margin-bottom:8px">Hirdetés típusa<br><select id="nl-kind" style="width:100%;max-width:420px">
-      <option value="sell">Kínálok (én adok, mások ajánlanak érte)</option>
-      <option value="buy">Keresek (én kapok, mások szállítanak)</option>
-    </select></label>
+    <label style="display:block;margin-bottom:8px">Típus<br><select id="nl-kind" style="width:100%;max-width:420px">
+      <option value="sell">Kínálok</option><option value="buy">Keresek</option></select></label>
     <div class="row">
       <label>Nyersanyag <select id="nl-res">${Object.keys(RES).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select></label>
       <label>Mennyiség <input id="nl-amt" type="number" min="1" value="1" style="width:100px"></label>
-      <button class="btn" onclick="marketSubmitCreate()">Hirdetés létrehozása</button>
+      <button class="btn" onclick="marketSubmitCreate()">Létrehozás</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
-      <b>Kínálok</b>: az áru azonnal letétbe kerül, csak elfogadáskor kapod meg az ellenértéket.<br>
-      <b>Keresek</b>: a hirdető fizet elfogadáskor; az ajánlattevő áruja letétbe kerül.
-    </p>
   </div>`;
 }
 async function marketSubmitCreate() {
   const kind = $('nl-kind')?.value, res = $('nl-res')?.value, amt = Number($('nl-amt')?.value);
-  if (!amt || amt < 1) return alert('Adj meg érvényes mennyiséget.');
+  if (!amt || amt < 1) return alert('Adj meg mennyiséget.');
   const { error } = await sb.rpc('market_post', { p_player: S.actAs, p_kind: kind, p_resource: res, p_amount: amt });
   if (error) return alert(error.message);
   S.marketTab = 'mine';
   await loadMarketAndRender(); await refreshNow();
 }
 async function marketCancel(lid) {
-  if (!confirm('Biztosan visszavonod ezt a hirdetést?')) return;
+  if (!confirm('Visszavonod?')) return;
   const { error } = await sb.rpc('market_cancel', { p_listing: lid });
   if (error) return alert(error.message);
   await loadMarketAndRender(); await refreshNow();
 }
 async function marketWithdraw(oid) {
-  if (!confirm('Biztosan visszavonod ezt az ajánlatot?')) return;
+  if (!confirm('Visszavonod?')) return;
   const { error } = await sb.rpc('market_withdraw', { p_offer: oid });
   if (error) return alert(error.message);
   await loadMarketAndRender(); await refreshNow();
 }
 async function marketDecide(oid, accept) {
-  if (!confirm(accept ? 'Elfogadod ezt az ajánlatot?' : 'Elutasítod ezt az ajánlatot?')) return;
+  if (!confirm(accept ? 'Elfogadod?' : 'Elutasítod?')) return;
   const { error } = await sb.rpc('market_decide', { p_offer: oid, p_accept: accept });
   if (error) return alert(error.message);
   await loadMarketAndRender(); await refreshNow();
