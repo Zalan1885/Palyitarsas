@@ -58,6 +58,17 @@
   #tooltip{position:absolute;background:#2a2119;color:#fff;padding:8px 12px;border-radius:8px;display:none;z-index:1000;font-size:13px;line-height:1.45;max-width:320px;pointer-events:none}
   .zoom{position:sticky;float:right;top:8px;right:8px;margin:8px;z-index:20;display:flex;gap:4px}
   .zoom button{padding:4px 10px}
+  /* piac modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000;padding:12px;overflow-y:auto}
+  .modal{background:var(--card);border-radius:14px;max-width:820px;width:100%;max-height:92vh;overflow:auto;padding:16px 16px 20px;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .modal h2{margin:0 0 4px;padding-right:30px}
+  .modal .close{position:absolute;top:10px;right:10px;background:none;border:0;font-size:22px;cursor:pointer;color:var(--muted);padding:4px 8px;line-height:1}
+  .modal-tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin:10px 0 14px;flex-wrap:wrap}
+  .modal-tabs button{background:none;border:0;padding:8px 12px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;border-radius:0;cursor:pointer}
+  .modal-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .mitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fff}
+  .mitem .row{margin:4px 0;flex-wrap:wrap}
+  @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}}
 </style>
 </head>
 <body>
@@ -66,7 +77,7 @@
 
 <script>
 const POS = {"Fiume - város": {"left": "1.5px", "top": "380.5px"}, "Modrus-Fiume": {"left": "1.5px", "top": "360.5px"}, "Lika-Krbava": {"left": "30.5px", "top": "415.5px"}, "Zágráb": {"left": "60.5px", "top": "329.5px"}, "Varasd": {"left": "84.5px", "top": "298.5px"}, "Belovár-Kőrós": {"left": "127.5px", "top": "317.5px"}, "Pozsega": {"left": "154.5px", "top": "366.5px"}, "Verőcze": {"left": "187.5px", "top": "342.5px"}, "Szerém": {"left": "261px", "top": "391.5px"}, "Baranya": {"left": "222.5px", "top": "303.5px"}, "Tolna": {"left": "239.5px", "top": "258.5px"}, "Somogy": {"left": "165.5px", "top": "255.5px"}, "Zala": {"left": "122.5px", "top": "232.5px"}, "Vas": {"left": "111.5px", "top": "194px"}, "Veszprém": {"left": "188.5px", "top": "193.5px"}, "Fejér": {"left": "244.5px", "top": "194.5px"}, "Komárom": {"left": "220.5px", "top": "147.5px"}, "Esztergom": {"left": "264.5px", "top": "149.5px"}, "Győr": {"left": "197.5px", "top": "161.5px"}, "Sopron": {"left": "131.5px", "top": "152.5px"}, "Moson": {"left": "160px", "top": "136.5px"}, "Pozsony": {"left": "171.5px", "top": "89.5px"}, "Nyitra": {"left": "180.5px", "top": "60.5px"}, "Bars": {"left": "257.5px", "top": "79.5px"}, "Hont": {"left": "283.5px", "top": "105.5px"}, "Zólyom": {"left": "300.96px", "top": "64.5px"}, "Trencsén": {"left": "223.5px", "top": "9.5px"}, "Árva": {"left": "310.5px", "top": "1.5px"}, "Liptó": {"left": "310.5px", "top": "34.5px"}, "Szepes": {"left": "367px", "top": "15.5px"}, "Sáros": {"left": "408px", "top": "16.5px"}, "Zemplén": {"left": "423px", "top": "22.5px"}, "Ung": {"left": "478.5px", "top": "48px"}, "Bereg": {"left": "500px", "top": "64.5px"}, "Szatmár": {"left": "495.5px", "top": "136.5px"}, "Szabolcs": {"left": "428.5px", "top": "112.5px"}, "Hajdú": {"left": "413.5px", "top": "158.5px"}, "Nógrád": {"left": "301.5px", "top": "92px"}, "Borsod": {"left": "368.5px", "top": "107.86px"}, "Heves": {"left": "342.5px", "top": "139.5px"}, "Jász-Nagykun-Szolnok": {"left": "344.5px", "top": "185.5px"}, "Pest-Pilis-Solt-Kiskun": {"left": "282.5px", "top": "167px"}, "Csongrád": {"left": "343.5px", "top": "266px"}, "Csanád": {"left": "387.5px", "top": "287.5px"}, "Békés": {"left": "387px", "top": "229.5px"}, "Bács-Bodrog": {"left": "292.5px", "top": "306.5px"}, "Torontál": {"left": "368.5px", "top": "318.5px"}, "Temes": {"left": "417.5px", "top": "325.5px"}, "Hunyad": {"left": "516.5px", "top": "305px"}, "Arad": {"left": "418.5px", "top": "273px"}, "Bihar": {"left": "430.92px", "top": "191.5px"}, "Szilágy": {"left": "508.5px", "top": "185px"}, "Szolnok-Doboka": {"left": "571.5px", "top": "179.5px"}, "Máramaros": {"left": "559.5px", "top": "78.5px"}, "Beszterce-Naszód": {"left": "626px", "top": "181px"}, "Kolozs": {"left": "531px", "top": "233px"}, "Torda-Aranyos": {"left": "533.5px", "top": "268px"}, "Alsó-Fehér": {"left": "550.5px", "top": "291px"}, "Szeben": {"left": "585.5px", "top": "332px"}, "Fogaras": {"left": "647px", "top": "331.5px"}, "Kis-Küküllő": {"left": "610.5px", "top": "286.5px"}, "Udvarhely": {"left": "665.5px", "top": "269.5px"}, "Háromszék": {"left": "715px", "top": "300.5px"}, "Csík": {"left": "694px", "top": "220px"}, "Maros-Torda": {"left": "628.5px", "top": "225.5px"}, "Budapest": {"left": "299.5px", "top": "192px"}, "Ugocsa": {"left": "537px", "top": "121.5px"}, "Krassó-Szőrény": {"left": "453.5px", "top": "331.5px"}, "Gömör-és-Kis-Hont": {"left": "350.5px", "top": "65px"}, "Abaúj-Torna": {"left": "395px", "top": "75.5px"}, "Túrócz": {"left": "283.5px", "top": "41.5px"}, "Nagy-Küküllő": {"left": "620.5px", "top": "305px"}, "Brassó": {"left": "703px", "top": "322px"}};
-const DEMO = {"counties": {"Fiume - város": {"r": [], "f": ["kikötő"]}, "Modrus-Fiume": {"r": [], "f": ["élelmiszeripar", "gépgyártás", "kikötő"]}, "Lika-Krbava": {"r": ["wood"], "f": ["kikötő"]}, "Zágráb": {"r": [], "f": ["könnyűipar", "élelmiszeripar"]}, "Varasd": {"r": ["wine", "wood", "coal"], "f": []}, "Belovár-Kőrós": {"r": ["wine", "wood", "corn"], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Pozsega": {"r": ["wood", "wheat", "corn"], "f": []}, "Verőcze": {"r": ["wood", "wheat"], "f": []}, "Szerém": {"r": ["wine", "wood", "wheat"], "f": []}, "Baranya": {"r": ["wine", "coal"], "f": ["könnyűipar", "vas-és fémipar", "egyetem"]}, "Tolna": {"r": ["wine"], "f": []}, "Somogy": {"r": ["wine", "sugar", "livestock"], "f": []}, "Zala": {"r": ["wine"], "f": []}, "Vas": {"r": ["sugar", "iron_ore"], "f": ["gépgyártás"]}, "Veszprém": {"r": ["wine", "corn"], "f": []}, "Fejér": {"r": ["wheat", "livestock"], "f": ["gépgyártás"]}, "Komárom": {"r": ["wine", "coal"], "f": []}, "Esztergom": {"r": ["coal"], "f": []}, "Győr": {"r": [], "f": ["gépgyártás"]}, "Sopron": {"r": ["sugar"], "f": []}, "Moson": {"r": ["wheat"], "f": ["gépgyártás"]}, "Pozsony": {"r": ["sugar"], "f": ["könnyűipar", "egyetem"]}, "Nyitra": {"r": ["sugar"], "f": []}, "Bars": {"r": ["wood", "wheat"], "f": []}, "Hont": {"r": [], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Zólyom": {"r": ["gold"], "f": ["könnyűipar"]}, "Trencsén": {"r": ["livestock", "coal"], "f": []}, "Árva": {"r": ["wood", "coal"], "f": []}, "Liptó": {"r": ["wood"], "f": []}, "Szepes": {"r": ["gold", "livestock", "iron_ore"], "f": []}, "Sáros": {"r": ["wood", "gold"], "f": []}, "Zemplén": {"r": ["wine"], "f": []}, "Ung": {"r": ["wood", "livestock"], "f": []}, "Bereg": {"r": ["wine", "wheat"], "f": []}, "Szatmár": {"r": ["wheat", "corn", "livestock"], "f": []}, "Szabolcs": {"r": [], "f": ["egyetem"]}, "Hajdú": {"r": ["livestock"], "f": ["könnyűipar", "élelmiszeripar", "gépgyártás"]}, "Nógrád": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Borsod": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Heves": {"r": ["wine", "coal"], "f": []}, "Jász-Nagykun-Szolnok": {"r": ["wheat", "corn"], "f": ["gépgyártás"]}, "Pest-Pilis-Solt-Kiskun": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Csongrád": {"r": ["wheat", "livestock"], "f": ["könnyűipar"]}, "Csanád": {"r": ["sugar", "wheat", "corn", "livestock"], "f": []}, "Békés": {"r": ["wheat", "corn", "livestock"], "f": []}, "Bács-Bodrog": {"r": ["wine", "sugar", "wheat", "corn", "livestock"], "f": []}, "Torontál": {"r": ["wheat", "corn"], "f": []}, "Temes": {"r": ["coal"], "f": ["gépgyártás"]}, "Hunyad": {"r": ["gold", "livestock", "iron_ore"], "f": ["vas-és fémipar"]}, "Arad": {"r": ["wine", "wheat", "livestock"], "f": ["gépgyártás"]}, "Bihar": {"r": ["sugar", "livestock"], "f": ["élelmiszeripar"]}, "Szilágy": {"r": ["wood", "wheat", "corn"], "f": []}, "Szolnok-Doboka": {"r": ["wood", "wheat"], "f": ["vas-és fémipar"]}, "Máramaros": {"r": ["gold", "livestock"], "f": []}, "Beszterce-Naszód": {"r": ["wood"], "f": []}, "Kolozs": {"r": [], "f": ["könnyűipar", "egyetem"]}, "Torda-Aranyos": {"r": ["gold", "livestock"], "f": []}, "Alsó-Fehér": {"r": ["wine", "gold", "livestock"], "f": []}, "Szeben": {"r": ["coal"], "f": ["vas-és fémipar"]}, "Fogaras": {"r": ["livestock"], "f": []}, "Kis-Küküllő": {"r": ["wine", "wheat"], "f": []}, "Udvarhely": {"r": ["wheat", "corn"], "f": []}, "Háromszék": {"r": ["wood"], "f": []}, "Csík": {"r": ["wood"], "f": []}, "Maros-Torda": {"r": ["livestock"], "f": ["könnyűipar", "gépgyártás"]}, "Budapest": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Ugocsa": {"r": [], "f": []}, "Krassó-Szőrény": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Gömör-és-Kis-Hont": {"r": ["iron_ore"], "f": []}, "Abaúj-Torna": {"r": ["gold"], "f": ["vas-és fémipar"]}, "Túrócz": {"r": ["wood"], "f": []}, "Nagy-Küküllő": {"r": ["wood", "wheat"], "f": []}, "Brassó": {"r": [], "f": ["könnyűipar"]}}, "start": {"Pest-Pilis-Solt-Kiskun": "nagyur", "Budapest": "nagyur", "Nógrád": "nagyur", "Hont": "nagyur", "Somogy": "penzugy", "Belovár-Kőrós": "penzugy", "Zala": "penzugy", "Szatmár": "hadugy", "Szilágy": "hadugy", "Szabolcs": "hadugy", "Trencsén": "igazsag", "Nyitra": "igazsag", "Pozsony": "igazsag", "Gömör-és-Kis-Hont": "belugy", "Abaúj-Torna": "belugy", "Zemplén": "belugy", "Alsó-Fehér": "gazdasagi", "Kis-Küküllő": "gazdasagi", "Nagy-Küküllő": "gazdasagi"}, "offices": [{"key": "nagyur", "name": "Nagyúr", "color": "#c0392b", "duty": "Vezeti a közös célokat, elősegíti a belső egységet.", "ability": "Rendeletet adhat ki, amit mindenki betartani köteles; a Változás akciónál 5 mozgást végezhet."}, {"key": "penzugy", "name": "Pénzügyminiszter", "color": "#27ae60", "duty": "Fenntartja a kereskedelmet és az árstabilitást.", "ability": "Felső és alsó határt szabhat a kereskedelmi árakra; egyszer vétózhat egy akciót."}, {"key": "hadugy", "name": "Hadügyminiszter", "color": "#2c3e50", "duty": "Külső támadás esetén haditervet dolgoz ki, irányítja a hadműveleteket.", "ability": "Kötelező hadi fejlesztéseket rendelhet el; +1 szénért 3 egységet állíthat ki."}, {"key": "igazsag", "name": "Igazságügy-miniszter", "color": "#8e44ad", "duty": "A bírósági kérdésekben dönt.", "ability": "+1 fáért +1 munkaerőt helyezhet fel a munkaerő akciónál."}, {"key": "belugy", "name": "Belügyminiszter", "color": "#e67e22", "duty": "Belső konfliktusok békés megoldása.", "ability": "Egyszer vétózhatja a Nagyúr rendeletét; +1 téglával 3 dolgot építhet egyszerre."}, {"key": "gazdasagi", "name": "Gazdasági biztos", "color": "#16a085", "duty": "A gazdasági stabilitást biztosítja.", "ability": "Termeléskor +1-et ad a dobáshoz, de 1 vagy 6 esetén nem termel."}]};
+const DEMO = {"counties": {"Fiume - város": {"r": [], "f": ["kikötő"]}, "Modrus-Fiume": {"r": [], "f": ["élelmiszeripar", "gépgyártás", "kikötő"]}, "Lika-Krbava": {"r": ["wood"], "f": ["kikötő"]}, "Zágráb": {"r": [], "f": ["könnyűipar", "élelmiszeripar"]}, "Varasd": {"r": ["wine", "wood", "coal"], "f": []}, "Belovár-Kőrós": {"r": ["wine", "wood", "corn"], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Pozsega": {"r": ["wood", "wheat", "corn"], "f": []}, "Verőcze": {"r": ["wood", "wheat"], "f": []}, "Szerém": {"r": ["wine", "wood", "wheat"], "f": []}, "Baranya": {"r": ["wine", "coal"], "f": ["könnyűipar", "vas-és fémipar", "egyetem"]}, "Tolna": {"r": ["wine"], "f": []}, "Somogy": {"r": ["wine", "sugar", "livestock"], "f": []}, "Zala": {"r": ["wine"], "f": []}, "Vas": {"r": ["sugar", "iron_ore"], "f": ["gépgyártás"]}, "Veszprém": {"r": ["wine", "corn"], "f": []}, "Fejér": {"r": ["wheat", "livestock"], "f": ["gépgyártás"]}, "Komárom": {"r": ["wine", "coal"], "f": []}, "Esztergom": {"r": ["coal"], "f": []}, "Győr": {"r": [], "f": ["gépgyártás"]}, "Sopron": {"r": ["sugar"], "f": []}, "Moson": {"r": ["wheat"], "f": ["gépgyártás"]}, "Pozsony": {"r": ["sugar"], "f": ["könnyűipar", "egyetem"]}, "Nyitra": {"r": ["sugar"], "f": []}, "Bars": {"r": ["wood", "wheat"], "f": []}, "Hont": {"r": [], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Zólyom": {"r": ["gold"], "f": ["könnyűipar"]}, "Trencsén": {"r": ["livestock", "coal"], "f": []}, "Árva": {"r": ["wood", "coal"], "f": []}, "Liptó": {"r": ["wood"], "f": []}, "Szepes": {"r": ["gold", "livestock", "iron_ore"], "f": []}, "Sáros": {"r": ["wood", "gold"], "f": []}, "Zemplén": {"r": ["wine"], "f": []}, "Ung": {"r": ["wood", "livestock"], "f": []}, "Bereg": {"r": ["wine", "wheat"], "f": []}, "Szatmár": {"r": ["wheat", "corn", "livestock"], "f": []}, "Szabolcs": {"r": [], "f": ["egyetem"]}, "Hajdú": {"r": ["livestock"], "f": ["könnyűipar", "élelmiszeripar", "gépgyártás"]}, "Nógrád": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Borsod": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Heves": {"r": ["wine", "coal"], "f": []}, "Jász-Nagykun-Szolnok": {"r": ["wheat", "corn"], "f": ["gépgyártás"]}, "Pest-Pilis-Solt-Kiskun": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Csongrád": {"r": ["wheat", "livestock"], "f": ["könnyűipar"]}, "Csanád": {"r": ["sugar", "wheat", "corn", "livestock"], "f": []}, "Békés": {"r": ["wheat", "corn", "livestock"], "f": []}, "Bács-Bodrog": {"r": ["wine", "sugar", "wheat", "corn", "livestock"], "f": []}, "Torontál": {"r": ["wheat", "corn"], "f": []}, "Temes": {"r": ["coal"], "f": ["gépgyártás"]}, "Hunyad": {"r": ["gold", "livestock", "iron_ore"], "f": ["vas-és fémipar"]}, "Arad": {"r": ["wine", "wheat", "livestock"], "f": ["gépgyártás"]}, "Bihar": {"r": ["sugar", "livestock"], "f": ["élelmiszeripar"]}, "Szilágy": {"r": ["wood", "wheat", "corn"], "f": []}, "Szolnok-Doboka": {"r": ["wood", "wheat"], "f": ["vas-és fémipar"]}, "Máramaros": {"r": ["gold", "livestock"], "f": []}, "Beszterce-Naszód": {"r": ["wood"], "f": []}, "Kolozs": {"r": [], "f": ["könnyűipar", "egyetem"]}, "Torda-Aranyos": {"r": ["gold", "livestock"], "f": []}, "Alsó-Fehér": {"r": ["wine", "gold", "livestock"], "f": []}, "Szeben": {"r": ["coal"], "f": ["vas-és fémipar"]}, "Fogaras": {"r": ["livestock"], "f": []}, "Kis-Küküllő": {"r": ["wine", "wheat"], "f": []}, "Udvarhely": {"r": ["wheat", "corn"], "f": []}, "Háromszék": {"r": ["wood"], "f": []}, "Csík": {"r": ["wood"], "f": []}, "Maros-Torda": {"r": ["livestock"], "f": ["könnyűipar", "gépgyártás"]}, "Budapest": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Ugocsa": {"r": [], "f": []}, "Krassó-Szőrény": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Gömör-és-Kis-Hont": {"r": ["iron_ore"], "f": []}, "Abaúj-Torna": {"r": ["gold"], "f": ["vas-és fémipar"]}, "Túrócz": {"r": ["wood"], "f": []}, "Nagy-Küküllő": {"r": ["wood", "wheat"], "f": []}, "Brassó": {"r": [], "f": ["könnyűipar"]}}, "start": {"Pest-Pilis-Solt-Kiskun": "nagyur", "Budapest": "nagyur", "Nógrád": "nagyur", "Hont": "nagyur", "Somogy": "penzugy", "Belovár-Kőrós": "penzugy", "Zala": "penzugy", "Szatmár": "hadugy", "Szilágy": "hadugy", "Szabolcs": "hadugy", "Trencsén": "igazsag", "Nyitra": "igazsag", "Pozsony": "igazsag", "Gömör-és-Kis-Hont": "belugy", "Abaúj-Torna": "belugy", "Zemplén": "belugy", "Alsó-Fehér": "gazdasagi", "Kis-Küküllő": "gazdasagi", "Nagy-Küküllő": "gazdasagi"}, "offices": [{"key": "nagyur", "name": "Nagyúr", "color": "#c0392b", "duty": "Vezeti a közös célokat, elősegíti a belső egységet.", "ability": "Rendeletet adhat ki, amit mindenki betartani köteles; a Változás akciónál 5 mozgást végezhet."}, {"key": "penzugy", "name": "Pénzügyminiszter", "color": "#27ae60", "duty": "Fenntartja a kereskedelmet és az árstabilitást.", "ability": "Felső és alsó határt szabhat a kereskedelmi árakra; egyszer vétózhat egy akciót."}, {"key": "hadugy", "name": "Hadügyminiszter", "color": "#2c3e50", "duty": "Külső támadás esetén haditervet dolgoz ki, irányítja a hadműveleteket.", "ability": "Kötelező hadi fejlesztéseket rendelhet el; +1 szénért 3 egységet állíthat ki."}, {"key": "igazsag", "name": "Igazságügy-miniszter", "color": "#8e44ad", "duty": "A bírósági kérdésekben dönt.", "ability": "+1 fáért +1 munkaerőt helyezhet fel a munkaerő akciónál."}, {"key": "belugy", "name": "Belügyminiszter", "color": "#e67e22", "duty": "Belső konfliktusok békés megoldása.", "ability": "Egyszer vétózhatja a Nagyúr rendeletét; +1 téglával 3 dolgot építhetsz egyszerre."}, {"key": "gazdasagi", "name": "Gazdasági biztos", "color": "#16a085", "duty": "A gazdasági stabilitást biztosítja.", "ability": "Termeléskor +1-et ad a dobáshoz, de 1 vagy 6 esetén nem termel."}]};
 const EMAIL_DOMAIN = 'jatek.local';   // a felhasználónévből ebből lesz az e-mail
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
@@ -76,7 +87,7 @@ const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse'};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 /* ---------- indulás ---------- */
@@ -396,6 +407,7 @@ function renderStatus() {
     Object.keys(RES).map(k => `<span class="chip" style="${S.res[k] > 0 ? '' : 'opacity:.5'}">${RES[k]}: <b>${num(S.res[k] || 0)}</b></span>`).join('') +
     `<span class="chip">👥 munkaerő: <b id="mpv">–</b></span></div>
     <div class="row" style="margin-top:6px"><button class="btn" onclick="rpc('collect_all',{p_player:S.actAs})">Összes begyűjtése (<span id="pend">0</span> db)</button>` +
+    `<button class="btn" onclick="openMarket()">🏪 Piac</button>` +
     (adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 mindenből (teszt)</button>` : '') + `</div>`;
 }
 
@@ -432,6 +444,183 @@ function tick() {
   document.querySelectorAll('[data-end]').forEach(e => { const s = (Date.parse(e.dataset.end) - Date.now()) / 1000; e.textContent = fmtT(s);
     if (s <= 0 && !S.fin[e.dataset.end]) { S.fin[e.dataset.end] = 1; setTimeout(refreshNow, 800); } });
 }
+
+/* ---------- piac (modal) ---------- */
+async function openMarket() {
+  if (S.demo) { alert('A piac demó módban nem elérhető.'); return; }
+  if (!S.actAs) return;
+  if ($('market-backdrop')) return;
+  document.body.insertAdjacentHTML('beforeend',
+    `<div class="modal-backdrop" id="market-backdrop" onclick="if(event.target===this)closeMarket()">
+      <div class="modal">
+        <button class="close" onclick="closeMarket()">✕</button>
+        <h2>🏪 Piac</h2>
+        <div id="market-content">Betöltés…</div>
+      </div>
+    </div>`);
+  S.marketTab = 'browse';
+  await loadMarketAndRender();
+}
+function closeMarket() { $('market-backdrop')?.remove(); }
+async function loadMarket() {
+  if (S.demo || !S.actAs || !S.sel) return;
+  const [l, o] = await Promise.all([
+    sb.from('market_listings').select('*').eq('game_id', S.sel).order('created_at', { ascending:false }),
+    sb.from('market_offers').select('*').eq('game_id', S.sel).order('created_at', { ascending:false })
+  ]);
+  if (l.error) S.msg = l.error.message;
+  if (o.error) S.msg = o.error.message;
+  S.marketListings = l.data || [];
+  S.marketOffers = o.data || [];
+}
+async function loadMarketAndRender() { await loadMarket(); renderMarket(); }
+async function marketTab(t) { S.marketTab = t; await loadMarketAndRender(); }
+const resName = r => RES[r] || r;
+const listingTitle = l => l.kind === 'sell'
+  ? `Kínál: ${l.amount}× ${resName(l.resource)}`
+  : `Keres: ${l.amount}× ${resName(l.resource)}`;
+function playerName(pid) { const p = S.players.find(x => x.id === pid); return p ? esc(p.nation_name) : '(?)'; }
+
+function renderMarket() {
+  const el = $('market-content'); if (!el) return;
+  const tab = S.marketTab || 'browse', me = S.actAs;
+  let h = `<div class="modal-tabs">
+    <button class="${tab==='browse'?'on':''}" onclick="marketTab('browse')">Hirdetések</button>
+    <button class="${tab==='mine'?'on':''}" onclick="marketTab('mine')">Saját hirdetéseim</button>
+    <button class="${tab==='offers'?'on':''}" onclick="marketTab('offers')">Ajánlataim</button>
+    <button class="${tab==='new'?'on':''}" onclick="marketTab('new')">➕ Új</button>
+  </div>`;
+  if (tab === 'browse') h += renderMarketBrowse(me);
+  else if (tab === 'mine') h += renderMarketMine(me);
+  else if (tab === 'offers') h += renderMarketOffers(me);
+  else h += renderMarketNew();
+  el.innerHTML = h;
+}
+
+function renderMarketBrowse(me) {
+  const others = (S.marketListings || []).filter(l => l.status === 'open' && l.author_id !== me);
+  if (!others.length) return '<p style="color:var(--muted)">Nincs más nyitott hirdetés.</p>';
+  return others.map(l => {
+    const my = (S.marketOffers || []).find(o => o.listing_id === l.id && o.bidder_id === me && o.status === 'pending');
+    return `<div class="mitem">
+      <div class="row"><b class="grow">${listingTitle(l)}</b><small>${playerName(l.author_id)}</small></div>
+      <div style="color:var(--muted);font-size:12px;margin:4px 0">${new Date(l.created_at).toLocaleString('hu-HU')}</div>
+      ${my
+        ? `<div class="chip" style="background:#e8f5e9">Ajánlatod: ${my.give_amount}× ${resName(my.give_resource)} ↔ ${my.get_amount}× ${resName(my.get_resource)} (függő)</div>`
+        : `<button class="btn ghost" onclick="marketOfferForm('${l.id}')">Ajánlat tétel</button>
+           <div id="offer-form-${l.id}" style="display:none;margin-top:8px">
+             <div class="row">
+               <label style="font-size:13px">${l.kind === 'sell' ? 'Te adod:' : 'Te kapod:'}
+                 <select id="of-res-${l.id}">${Object.keys(RES).filter(k => k !== l.resource).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select>
+               </label>
+               <input id="of-amt-${l.id}" type="number" min="1" value="1" style="width:90px">
+               <button class="btn" onclick="marketSubmitOffer('${l.id}')">Küldés</button>
+             </div>
+             <div style="font-size:12px;color:var(--muted);margin-top:4px">
+               ${l.kind === 'sell'
+                 ? `Te adod a fenti nyersanyagot letétbe. Ő adja neked: ${l.amount}× ${resName(l.resource)}.`
+                 : `Te adod neki: ${l.amount}× ${resName(l.resource)} (letétbe). Te kapod a fenti nyersanyagot.`}
+             </div>
+           </div>`}
+    </div>`;
+  }).join('');
+}
+function marketOfferForm(lid) {
+  const el = $('offer-form-' + lid);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function marketSubmitOffer(lid) {
+  const res = $('of-res-' + lid)?.value, amt = Number($('of-amt-' + lid)?.value);
+  if (!amt || amt < 1) return alert('Adj meg érvényes mennyiséget.');
+  const { error } = await sb.rpc('market_offer', { p_listing: lid, p_player: S.actAs, p_resource: res, p_amount: amt });
+  if (error) return alert(error.message);
+  await loadMarketAndRender(); await refreshNow();
+}
+
+function renderMarketMine(me) {
+  const mine = (S.marketListings || []).filter(l => l.author_id === me);
+  if (!mine.length) return '<p style="color:var(--muted)">Még nincs hirdetésed.</p>';
+  return mine.map(l => {
+    const pending = (S.marketOffers || []).filter(o => o.listing_id === l.id && o.status === 'pending');
+    const badge = { open: '🟢 nyitott', done: '✅ kész', cancelled: '⚪ visszavonva' }[l.status] || l.status;
+    let h = `<div class="mitem">
+      <div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>
+      <div style="color:var(--muted);font-size:12px">${new Date(l.created_at).toLocaleString('hu-HU')}</div>`;
+    if (l.status === 'open') {
+      h += `<div class="row" style="margin-top:6px"><button class="btn danger" onclick="marketCancel('${l.id}')">Hirdetés visszavonása</button></div>`;
+    }
+    if (pending.length) {
+      h += `<div style="margin-top:10px"><b>Beérkezett ajánlatok:</b></div>`;
+      h += pending.map(o => `<div class="row" style="margin:6px 0;padding:8px;background:#f8f4e8;border-radius:6px">
+        <span class="grow">${playerName(o.bidder_id)}: ad <b>${o.give_amount}× ${resName(o.give_resource)}</b>, kap <b>${o.get_amount}× ${resName(o.get_resource)}</b></span>
+        <button class="btn" onclick="marketDecide('${o.id}', true)">Elfogad</button>
+        <button class="btn ghost" onclick="marketDecide('${o.id}', false)">Elutasít</button>
+      </div>`).join('');
+    } else if (l.status === 'open') {
+      h += `<div style="color:var(--muted);font-size:13px;margin-top:6px">Nincs függő ajánlat.</div>`;
+    }
+    return h + '</div>';
+  }).join('');
+}
+
+function renderMarketOffers(me) {
+  const mine = (S.marketOffers || []).filter(o => o.bidder_id === me);
+  if (!mine.length) return '<p style="color:var(--muted)">Még nincs ajánlatod.</p>';
+  return mine.map(o => {
+    const l = (S.marketListings || []).find(x => x.id === o.listing_id);
+    const st = { pending: '⏳ függő', accepted: '✅ elfogadva', declined: '❌ elutasítva', withdrawn: '⚪ visszavonva' }[o.status] || o.status;
+    return `<div class="mitem">
+      <div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt hirdetés)'}</b><span class="chip">${st}</span></div>
+      <div style="font-size:13px">Adok: <b>${o.give_amount}× ${resName(o.give_resource)}</b> · Kapok: <b>${o.get_amount}× ${resName(o.get_resource)}</b></div>
+      ${o.status === 'pending' ? `<div class="row" style="margin-top:6px"><button class="btn ghost" onclick="marketWithdraw('${o.id}')">Visszavonás</button></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderMarketNew() {
+  return `<div class="mitem">
+    <label style="display:block;margin-bottom:8px">Hirdetés típusa<br><select id="nl-kind" style="width:100%;max-width:420px">
+      <option value="sell">Kínálok (én adok, mások ajánlanak érte)</option>
+      <option value="buy">Keresek (én kapok, mások szállítanak)</option>
+    </select></label>
+    <div class="row">
+      <label>Nyersanyag <select id="nl-res">${Object.keys(RES).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select></label>
+      <label>Mennyiség <input id="nl-amt" type="number" min="1" value="1" style="width:100px"></label>
+      <button class="btn" onclick="marketSubmitCreate()">Hirdetés létrehozása</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+      <b>Kínálok</b>: az áru azonnal letétbe kerül, csak elfogadáskor kapod meg az ellenértéket.<br>
+      <b>Keresek</b>: a hirdető fizet elfogadáskor; az ajánlattevő áruja letétbe kerül.
+    </p>
+  </div>`;
+}
+async function marketSubmitCreate() {
+  const kind = $('nl-kind')?.value, res = $('nl-res')?.value, amt = Number($('nl-amt')?.value);
+  if (!amt || amt < 1) return alert('Adj meg érvényes mennyiséget.');
+  const { error } = await sb.rpc('market_post', { p_player: S.actAs, p_kind: kind, p_resource: res, p_amount: amt });
+  if (error) return alert(error.message);
+  S.marketTab = 'mine';
+  await loadMarketAndRender(); await refreshNow();
+}
+async function marketCancel(lid) {
+  if (!confirm('Biztosan visszavonod ezt a hirdetést?')) return;
+  const { error } = await sb.rpc('market_cancel', { p_listing: lid });
+  if (error) return alert(error.message);
+  await loadMarketAndRender(); await refreshNow();
+}
+async function marketWithdraw(oid) {
+  if (!confirm('Biztosan visszavonod ezt az ajánlatot?')) return;
+  const { error } = await sb.rpc('market_withdraw', { p_offer: oid });
+  if (error) return alert(error.message);
+  await loadMarketAndRender(); await refreshNow();
+}
+async function marketDecide(oid, accept) {
+  if (!confirm(accept ? 'Elfogadod ezt az ajánlatot?' : 'Elutasítod ezt az ajánlatot?')) return;
+  const { error } = await sb.rpc('market_decide', { p_offer: oid, p_accept: accept });
+  if (error) return alert(error.message);
+  await loadMarketAndRender(); await refreshNow();
+}
+
 setInterval(tick, 1000);
 </script>
 </body>
