@@ -76,7 +76,7 @@ const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 /* ---------- indulás ---------- */
@@ -88,11 +88,12 @@ async function boot() {
   S.profile = data || {};
   const [o, b, d, r] = await Promise.all([
     sb.from('offices').select('*').order('sort'),
-    sb.from('building_types').select('key,name'),
+    sb.from('building_types').select('*'),
     sb.from('county_definitions').select('id,name,features,start_office'),
     sb.from('county_resources').select('definition_id,resource')]);
   S.offices = o.data || [];
   S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name]));
+  S.btAll = b.data || [];
   S.defs = d.data || [];
   S.cres = {}; (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
   S.msg = o.error?.message || d.error?.message || r.error?.message || '';
@@ -270,12 +271,22 @@ async function loadState() {
     sb.from('counties').select('id,owner_id,definition_id').eq('game_id', S.sel)]);
   S.msg = p.error?.message || c.error?.message || '';
   const ids = (c.data || []).map(x => x.id), pids = (p.data || []).map(x => x.profile_id).filter(Boolean);
-  const [b, pr] = await Promise.all([
-    ids.length ? sb.from('buildings').select('county_id,building_type,level,status').in('county_id', ids) : { data:[] },
-    pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] }]);
+  S.players = (p.data || []).map(x => ({ ...x, profiles:null }));
+  if (S.profile.is_admin) { if (!S.players.some(x => x.id === S.actAs)) S.actAs = S.players[0]?.id || null; }
+  else S.actAs = S.players.find(x => x.profile_id === S.user.id)?.id || null;
+  const [b, pr, pd, rs, mp] = await Promise.all([
+    ids.length ? sb.from('buildings').select('county_id,building_type,level,status,completes_at').in('county_id', ids) : { data:[] },
+    pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] },
+    sb.from('county_production').select('county_id,owner_id,resource,rate_per_hour,cap_amount,current_amount').eq('game_id', S.sel),
+    S.actAs ? sb.from('player_resources').select('resource,amount').eq('player_id', S.actAs) : { data:[] },
+    S.actAs ? sb.rpc('refresh_manpower', { p_player:S.actAs }) : { data:null }]);
+  if (pd.error || mp.error) S.msg = (pd.error || mp.error).message + ' – futott a 005_production_build.sql?';
   const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
+  S.players = S.players.map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
+  S.prod = pd.data || []; S.prodAt = Date.now();
+  S.res = Object.fromEntries((rs.data || []).map(x => [x.resource, Number(x.amount)]));
+  S.mp = mp.data || null; S.mpAt = Date.now();
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
-  S.players = (p.data || []).map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
     buildings:(b.data || []).filter(y => y.county_id === x.id) }));
@@ -286,8 +297,11 @@ async function openGame(id) {
   S.sel = id; Z = null; await loadState(); renderGame();
   if (S.demo) return;
   if (S.ch) sb.removeChannel(S.ch);
-  S.ch = sb.channel('g' + id).on('postgres_changes', { event:'*', schema:'public', table:'counties', filter:'game_id=eq.' + id },
-    async () => { await loadState(); renderGame(); }).subscribe();
+  let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
+  S.ch = sb.channel('g' + id);
+  ['counties', 'buildings', 'game_players', 'player_resources'].forEach(tb =>
+    S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
+  S.ch.subscribe();
 }
 const rpc = async (fn, args) => {
   if (S.demo) {
@@ -308,7 +322,7 @@ async function delGame() {
 function renderGame() {
   const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
   const adm = S.profile.is_admin, cnt = id => S.counties.filter(c => c.owner_id === id).length;
-  const keep = $('pick')?.innerHTML || '';
+  const sc = $('wrap') ? [$('wrap').scrollLeft, $('wrap').scrollTop] : null;
   $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button>
     <h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span><span class="grow"></span>` +
     (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button>
@@ -318,11 +332,13 @@ function renderGame() {
     <button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>
     ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
     <div class="row" style="margin-top:10px">` + (S.players.map(p => `<span class="chip" style="background:${esc(p.color)}26"><span class="dot" style="background:${esc(p.color)}"></span>
-      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} megye</span>`).join('') || 'Még nincs játékos.') + `</div>
-    <div id="pick" style="margin-top:10px">${keep || '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'}</div></div>
+      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} vármegye</span>`).join('') || 'Még nincs játékos.') + `</div>
+    <div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>
     <div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div>
     <div id="msz"><div id="map"></div></div></div></main>`;
   buildMap(); setZoom(Z);
+  if (sc) { $('wrap').scrollLeft = sc[0]; $('wrap').scrollTop = sc[1]; }
+  renderStatus(); renderPick();
 }
 function setZoom(z) {
   if (z === null || z === undefined) z = Math.max(.3, Math.min(1, ($('wrap').clientWidth - 6) / 1400));
@@ -352,18 +368,71 @@ function paint(n) {
 function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
-  const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.status === 'constructing' ? ' (épül)' : '')).join(', ') || 'nincs';
+  const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
   return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt ülés)') : 'senkié'}<br>
     Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
 function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
-function pick(n) {
-  const c = S.byName[n]; let h = info(n);
-  if (S.profile.is_admin && c) h += `<br>Tulajdonos módosítása: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
-    S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
-  $('pick').innerHTML = h;
+/* ---------- termelés + építkezés ---------- */
+const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h ? h + 'ó ' : '') + (h || m ? m + 'p ' : '') + (s % 60) + 'mp'; };
+const num = x => (Math.floor(x * 10) / 10).toLocaleString('hu-HU');
+const liveAmt = r => Math.min(Number(r.cap_amount), Number(r.current_amount) + Number(r.rate_per_hour) * (Date.now() - S.prodAt) / 3.6e6);
+const curMp = () => S.mp ? Math.max(S.mp.manpower, Math.min(S.mp.cap, S.mp.manpower + S.mp.rate * (Date.now() - S.mpAt) / 3.6e6)) : 0;
+const costHtml = cost => Object.entries(cost || {}).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
+const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_bonus * 100)}% termelés`, b.manpower_bonus > 0 && `+${b.manpower_bonus} munkaerő/óra`,
+  b.defense_bonus > 0 && `+${Math.round(b.defense_bonus * 100)}% védelem`].filter(Boolean).join(', ') || '–';
+const refreshNow = async () => { if (S.sel) { await loadState(); renderGame(); } };
+async function setActAs(v) { S.actAs = v; await refreshNow(); }
+function pick(n) { S.picked = n; renderPick(); }
+
+function renderStatus() {
+  const el = $('status'); if (!el) return;
+  if (S.demo) { el.innerHTML = ''; return; }
+  if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged ebben a játékban.</span>'; return; }
+  const adm = S.profile.is_admin;
+  el.innerHTML = `<div class="row">` +
+    (adm ? `Megfigyelt játékos: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('')}</select>` : '') +
+    Object.keys(RES).map(k => `<span class="chip" style="${S.res[k] > 0 ? '' : 'opacity:.5'}">${RES[k]}: <b>${num(S.res[k] || 0)}</b></span>`).join('') +
+    `<span class="chip">👥 munkaerő: <b id="mpv">–</b></span></div>
+    <div class="row" style="margin-top:6px"><button class="btn" onclick="rpc('collect_all',{p_player:S.actAs})">Összes begyűjtése (<span id="pend">0</span> db)</button>` +
+    (adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 mindenből (teszt)</button>` : '') + `</div>`;
 }
+
+function renderPick() {
+  const el = $('pick'); if (!el) return;
+  const n = S.picked;
+  if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'; return; }
+  const c = S.byName[n]; let h = info(n);
+  if (!c) { el.innerHTML = h; return; }
+  const adm = S.profile.is_admin, mine = c.owner_id && (adm || c.owner_id === S.actAs);
+  if (adm) h += `<br>Tulajdonos módosítása: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
+    S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
+  if (!S.demo && mine) {
+    const g = S.games.find(x => x.id === S.sel), rows = S.prod.filter(r => r.county_id === c.id);
+    h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ')
+      || '<i>csak futó játékban termel</i>') + ` <button class="btn ghost" onclick="rpc('collect_county',{p_county:'${c.id}'})">Begyűjtés</button>`;
+    const have = new Set(c.buildings.map(b => b.building_type));
+    h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut – indítsd el (▶ Indítás).</div>` : '');
+    c.buildings.filter(b => new Date(b.completes_at) > Date.now()).forEach(b => {
+      h += `<div>${esc(S.btypes[b.building_type])}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
+    h += S.btAll.filter(b => !have.has(b.key)).map(b => {
+      const ok = c.owner_id !== S.actAs || (Object.entries(b.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= b.manpower_cost);
+      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(b.name)}</b> – ${effectHtml(b)}<br><small>Ár: ${costHtml(b.cost)}${b.manpower_cost ? ', ' + b.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(b.build_seconds / (g.speed_multiplier || 1))}</small></span>
+        <button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${b.key}'})">Építés</button></div>`; }).join('');
+  }
+  el.innerHTML = h; tick();
+}
+
+function tick() {
+  document.querySelectorAll('[data-lv]').forEach(e => { const [cid, res] = e.dataset.lv.split('|');
+    const r = S.prod.find(x => x.county_id === cid && x.resource === res); if (r) e.textContent = num(liveAmt(r)); });
+  const mp = $('mpv'); if (mp) mp.textContent = Math.floor(curMp());
+  const pd = $('pend'); if (pd) pd.textContent = Math.floor(S.prod.filter(r => r.owner_id === S.actAs).reduce((a, r) => a + liveAmt(r), 0));
+  document.querySelectorAll('[data-end]').forEach(e => { const s = (Date.parse(e.dataset.end) - Date.now()) / 1000; e.textContent = fmtT(s);
+    if (s <= 0 && !S.fin[e.dataset.end]) { S.fin[e.dataset.end] = 1; setTimeout(refreshNow, 800); } });
+}
+setInterval(tick, 1000);
 </script>
 </body>
 </html>
