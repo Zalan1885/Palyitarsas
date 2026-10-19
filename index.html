@@ -78,7 +78,11 @@ const EMAIL_DOMAIN = 'jatek.local';
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
-const BICON = { 'laktanya': 'svg/gyar.svg', 'var': 'svg/var.svg', 'varos': 'svg/varos.svg' };
+const BICON = {
+  'laktanya': 'svg/gyar.svg', 'barracks': 'svg/gyar.svg', 'gyar': 'svg/gyar.svg',
+  'var': 'svg/var.svg', 'castle': 'svg/var.svg', 'vár': 'svg/var.svg',
+  'varos': 'svg/varos.svg', 'city': 'svg/varos.svg', 'város': 'svg/varos.svg'
+};
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
@@ -375,6 +379,12 @@ function buildMap() {
   });
 }
 const _norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function _bKey(b){ return _norm(b.building_type); }
+function _bName(b){ return _norm(S.btypes[b.building_type] || ''); }
+function isLaktanya(b){ const k=_bKey(b),n=_bName(b); return ['laktanya','barracks','gyar'].includes(k) || ['laktanya','barracks','gyar'].includes(n); }
+function isVarOrVaros(b){ const k=_bKey(b),n=_bName(b); return ['var','varos','castle','city'].includes(k) || ['var','varos','vár','város','castle','city'].includes(n); }
+function isComplete(b){ return !b.completes_at || new Date(b.completes_at) <= Date.now(); }
+function isSameBType(stored, uiB){ return _bKey(stored)===_norm(uiB.key) || _bName(stored)===_norm(uiB.name); }
 function biconFor(b) {
   const byKey  = BICON[_norm(b.building_type)];
   const byName = BICON[_norm(S.btypes[b.building_type])];
@@ -385,7 +395,6 @@ function paint(n) {
   const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
   const svg = box.querySelector('svg');
   if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
-
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
     iconBox = document.createElement('div');
@@ -393,7 +402,6 @@ function paint(n) {
     iconBox.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;gap:2px;justify-content:center;align-items:center;width:90%;pointer-events:none;z-index:3;';
     box.appendChild(iconBox);
   }
-
   const icons = [], seen = new Set();
   for (const b of (c?.buildings || [])) {
     const src = biconFor(b);
@@ -402,7 +410,6 @@ function paint(n) {
     const inProgress = b.completes_at && new Date(b.completes_at) > Date.now();
     icons.push({ src, inProgress });
   }
-
   iconBox.innerHTML = icons.map(({ src, inProgress }) =>
     `<img src="${src}" alt="" style="width:14px;height:14px;object-fit:contain;opacity:${inProgress ? '.4' : '1'};filter:drop-shadow(0 1px 1px rgba(0,0,0,.7))">`
   ).join('');
@@ -411,9 +418,7 @@ function unitLine(u) {
   const ut = S.unitTypes.find(x => x.key === u.unit_type);
   const name = ut?.name || u.unit_type;
   const done = !u.completes_at || new Date(u.completes_at) <= Date.now();
-  if (!done) {
-    return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
-  }
+  if (!done) return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
   return `${u.amount}× ${name}`;
 }
 function info(n) {
@@ -471,45 +476,48 @@ function renderPick() {
     h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ')
       || '<i>csak futó játékban termel</i>') + ` <button class="btn ghost" onclick="rpc('collect_county',{p_county:'${c.id}'})">Begyűjtés</button>`;
 
-    const have = new Set(c.buildings.map(b => b.building_type));
-    const completedVarOrVaros = c.buildings.some(x => ['var','varos'].includes(x.building_type) && (x.completes_at === null || new Date(x.completes_at) <= Date.now()));
-    const completedLaktanya = c.buildings.find(x => x.building_type === 'laktanya' && (x.completes_at === null || new Date(x.completes_at) <= Date.now()));
+    const varOrVarosReady = c.buildings.some(b => isVarOrVaros(b) && isComplete(b));
+    const laktanyaAny    = c.buildings.find(isLaktanya);
+    const laktanyaReady  = laktanyaAny && isComplete(laktanyaAny);
 
     h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut – indítsd el (▶ Indítás).</div>` : '');
-    c.buildings.filter(b => new Date(b.completes_at) > Date.now()).forEach(b => {
-      h += `<div>${esc(S.btypes[b.building_type])}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
-    h += S.btAll.filter(b => !have.has(b.key)).map(b => {
+    c.buildings.filter(b => !isComplete(b)).forEach(b => {
+      h += `<div>${esc(S.btypes[b.building_type] || b.building_type)}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
+    h += S.btAll.filter(uiB => !c.buildings.some(st => isSameBType(st, uiB))).map(uiB => {
       let reason = '';
-      if (b.key === 'laktanya' && !completedVarOrVaros) reason = 'Előbb vár vagy város kell';
-      const ok = !reason && (c.owner_id !== S.actAs || (Object.entries(b.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= b.manpower_cost));
-      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(b.name)}</b> – ${effectHtml(b)}<br><small>${reason ? '<span class="err">' + reason + '</span> · ' : ''}Ár: ${costHtml(b.cost)}${b.manpower_cost ? ', ' + b.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(b.build_seconds / (g.speed_multiplier || 1))}</small></span>
-        <button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${b.key}'})">Építés</button></div>`; }).join('');
+      if (_norm(uiB.key) === 'laktanya' || _norm(uiB.name) === 'laktanya' || _norm(uiB.key) === 'barracks') {
+        if (!varOrVarosReady) reason = 'Előbb vár vagy város kell';
+      }
+      const ok = !reason && (c.owner_id !== S.actAs || (Object.entries(uiB.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= uiB.manpower_cost));
+      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(uiB.name)}</b> – ${effectHtml(uiB)}<br><small>${reason ? '<span class="err">' + reason + '</span> · ' : ''}Ár: ${costHtml(uiB.cost)}${uiB.manpower_cost ? ', ' + uiB.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(uiB.build_seconds / (g.speed_multiplier || 1))}</small></span>
+        <button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${uiB.key}'})">Építés</button></div>`; }).join('');
 
-    // Katonai toborzás – csak kész laktanyával
-    if (completedLaktanya && S.unitTypes.length) {
-      h += `<hr><b>Katonai toborzás</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut.</div>` : '');
+    h += `<hr><b>Katonai toborzás</b>`;
+    if (!S.unitTypes.length) {
+      h += `<div class="err" style="font-size:13px">Az egységtípusok nincsenek betöltve – futtattad a 007_units.sql-t?</div>`;
+    } else if (!laktanyaAny) {
+      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya ebben a vármegyében – előbb építs egyet.</div>`;
+    } else if (!laktanyaReady) {
+      const left = (new Date(laktanyaAny.completes_at) - Date.now()) / 1000;
+      h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT(left)}</b>. Toborzás csak elkészülte után.</div>`;
+    } else {
       h += S.unitTypes.map(ut => {
         const cost = ut.cost || {};
-        const costStr = Object.entries(cost).map(([k,v]) => `${v} ${RES[k]||k}`).join(', ');
-        const canAfford = Object.entries(cost).every(([k,v]) => (S.res[k]||0) >= v) && curMp() >= ut.manpower_cost;
+        const costStr = Object.entries(cost).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
+        const canAfford = Object.entries(cost).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= ut.manpower_cost;
         const disabled = (!canAfford || g.status !== 'running') ? 'disabled' : '';
         return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}×<br>
-          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier||1))} · mozgás: 1 vármegye / ${fmtT(ut.move_seconds)}</small></span>
+          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))} · mozgás: 1 vármegye / ${fmtT(ut.move_seconds)}</small></span>
           <input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}>
           <button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button>
         </div>`;
       }).join('');
-    } else if (!completedLaktanya) {
-      h += `<hr><b>Katonai toborzás</b><div style="color:var(--muted);font-size:13px">Előbb építs laktanyát ebben a vármegyében.</div>`;
     }
 
-    // Meglévő egységek
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
-    if (countyUnits.length) {
-      h += `<div style="margin-top:8px"><b>Katonaság:</b> ${countyUnits.map(unitLine).join(', ')}</div>`;
-    }
+    if (countyUnits.length) h += `<div style="margin-top:8px"><b>Katonaság:</b> ${countyUnits.map(unitLine).join(', ')}</div>`;
 
-    const built = S.btAll.filter(b => have.has(b.key)).map(b => esc(b.name)).join(', ');
+    const built = S.btAll.filter(uiB => c.buildings.some(st => isSameBType(st, uiB))).map(b => esc(b.name)).join(', ');
     if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}. Típusonként csak 1 építhető.</div>`;
   }
   el.innerHTML = h; tick();
