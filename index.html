@@ -31,7 +31,6 @@
   .err{color:#b00020}.okm{color:var(--ok)}
   .badge{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;color:#fff;background:#8a8070}
   .badge.running{background:var(--ok)}.badge.paused{background:var(--warn)}.badge.finished{background:#444}
-  /* belépés */
   .auth{display:grid;grid-template-columns:1.1fr 1fr;gap:0;max-width:960px;margin:6vh auto;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.15)}
   .hero{background:linear-gradient(160deg,#5c1414,#8c2a2a);color:#f6e7c1;padding:34px}
   .hero h1{font-size:34px;margin:0 0 6px}.hero p{opacity:.92}
@@ -44,13 +43,11 @@
   .field input{width:100%}.pwrow{display:flex;gap:6px}.pwrow input{flex:1}
   .hint{font-size:12px;min-height:16px;margin-top:2px}
   @media(max-width:760px){.auth{grid-template-columns:1fr;margin:0}.hero{padding:22px}}
-  /* játékok */
   .games{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
   .game{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
   .offgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
   .office{border:2px solid var(--line);border-left-width:10px;border-radius:10px;padding:10px;background:#fff;cursor:pointer}
   .office.sel{border-color:var(--accent);background:#fbf1e3}.office.off{opacity:.45;cursor:not-allowed}
-  /* térkép */
   #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:72vh}
   #map{position:relative;width:1400px;height:1000px;transform-origin:0 0}
   .county-svg{position:absolute;filter:drop-shadow(0 3px 3px rgba(0,0,0,.12));transition:transform .15s}
@@ -58,7 +55,6 @@
   #tooltip{position:absolute;background:#2a2119;color:#fff;padding:8px 12px;border-radius:8px;display:none;z-index:1000;font-size:13px;line-height:1.45;max-width:320px;pointer-events:none}
   .zoom{position:sticky;float:right;top:8px;right:8px;margin:8px;z-index:20;display:flex;gap:4px}
   .zoom button{padding:4px 10px}
-  /* piac modal */
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000;padding:12px;overflow-y:auto}
   .modal{background:var(--card);border-radius:14px;max-width:820px;width:100%;max-height:92vh;overflow:auto;padding:16px 16px 20px;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.3)}
   .modal h2{margin:0 0 4px;padding-right:30px}
@@ -82,19 +78,14 @@ const EMAIL_DOMAIN = 'jatek.local';
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
-/* --- Épület ikonok: laktanya → gyar.svg, vár → var.svg, város → varos.svg --- */
-const BICON = {
-  'laktanya': 'svg/gyar.svg',
-  'var':      'svg/var.svg',
-  'varos':    'svg/varos.svg'
-};
+const BICON = { 'laktanya': 'svg/gyar.svg', 'var': 'svg/var.svg', 'varos': 'svg/varos.svg' };
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse'};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[]};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 /* ---------- indulás ---------- */
@@ -104,15 +95,17 @@ async function boot() {
   S.user = session.user;
   const { data } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).single();
   S.profile = data || {};
-  const [o, b, d, r] = await Promise.all([
+  const [o, b, d, r, ut] = await Promise.all([
     sb.from('offices').select('*').order('sort'),
     sb.from('building_types').select('*'),
     sb.from('county_definitions').select('id,name,features,start_office'),
-    sb.from('county_resources').select('definition_id,resource')]);
+    sb.from('county_resources').select('definition_id,resource'),
+    sb.from('unit_types').select('*').order('sort').then(x => x.error ? { data:[] } : x)]);
   S.offices = o.data || [];
   S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name]));
   S.btAll = b.data || [];
   S.defs = d.data || [];
+  S.unitTypes = ut.data || [];
   S.cres = {}; (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
   S.msg = o.error?.message || d.error?.message || r.error?.message || '';
   await loadGames();
@@ -292,18 +285,20 @@ async function loadState() {
   S.players = (p.data || []).map(x => ({ ...x, profiles:null }));
   if (S.profile.is_admin) { if (!S.players.some(x => x.id === S.actAs)) S.actAs = S.players[0]?.id || null; }
   else S.actAs = S.players.find(x => x.profile_id === S.user.id)?.id || null;
-  const [b, pr, pd, rs, mp] = await Promise.all([
+  const [b, pr, pd, rs, mp, un] = await Promise.all([
     ids.length ? sb.from('buildings').select('county_id,building_type,level,status,completes_at').in('county_id', ids) : { data:[] },
     pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] },
     sb.from('county_production').select('county_id,owner_id,resource,rate_per_hour,cap_amount,current_amount').eq('game_id', S.sel),
     S.actAs ? sb.from('player_resources').select('resource,amount').eq('player_id', S.actAs) : { data:[] },
-    S.actAs ? sb.rpc('refresh_manpower', { p_player:S.actAs }) : { data:null }]);
+    S.actAs ? sb.rpc('refresh_manpower', { p_player:S.actAs }) : { data:null },
+    sb.from('player_units').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x)]);
   if (pd.error || mp.error) S.msg = (pd.error || mp.error).message + ' – futott a 005_production_build.sql?';
   const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
   S.players = S.players.map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
   S.prod = pd.data || []; S.prodAt = Date.now();
   S.res = Object.fromEntries((rs.data || []).map(x => [x.resource, Number(x.amount)]));
   S.mp = mp.data || null; S.mpAt = Date.now();
+  S.units = un.data || [];
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
@@ -317,7 +312,7 @@ async function openGame(id) {
   if (S.ch) sb.removeChannel(S.ch);
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
   S.ch = sb.channel('g' + id);
-  ['counties', 'buildings', 'game_players', 'player_resources'].forEach(tb =>
+  ['counties', 'buildings', 'game_players', 'player_resources', 'player_units'].forEach(tb =>
     S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
   S.ch.subscribe();
 }
@@ -385,7 +380,6 @@ function biconFor(b) {
   const byName = BICON[_norm(S.btypes[b.building_type])];
   return byKey || byName || null;
 }
-/* --- JAVÍTVA: ikonok középen, tördelhetően, kicsinyítve --- */
 function paint(n) {
   const box = els[n]; if (!box) return;
   const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
@@ -400,7 +394,6 @@ function paint(n) {
     box.appendChild(iconBox);
   }
 
-  // Épülettípusonként 1 ikon, az épülőket halványan
   const icons = [], seen = new Set();
   for (const b of (c?.buildings || [])) {
     const src = biconFor(b);
@@ -414,16 +407,31 @@ function paint(n) {
     `<img src="${src}" alt="" style="width:14px;height:14px;object-fit:contain;opacity:${inProgress ? '.4' : '1'};filter:drop-shadow(0 1px 1px rgba(0,0,0,.7))">`
   ).join('');
 }
+function unitLine(u) {
+  const ut = S.unitTypes.find(x => x.key === u.unit_type);
+  const name = ut?.name || u.unit_type;
+  const done = !u.completes_at || new Date(u.completes_at) <= Date.now();
+  if (!done) {
+    return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
+  }
+  return `${u.amount}× ${name}`;
+}
 function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
+  const units = (S.units || []).filter(u => u.county_id === c.id);
+  const unitStr = units.map(u => {
+    const ut = S.unitTypes.find(x => x.key === u.unit_type);
+    const ready = !u.completes_at || new Date(u.completes_at) <= Date.now();
+    return `${u.amount}× ${ut?.name || u.unit_type}${ready ? '' : ' (kik.)'}`;
+  }).join(', ') || '–';
   return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt ülés)') : 'senkié'}<br>
-    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}`;
+    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}<br>Katonaság: ${esc(unitStr)}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
 function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
-/* ---------- termelés + építkezés ---------- */
+/* ---------- termelés + építkezés + toborzás ---------- */
 const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h ? h + 'ó ' : '') + (h || m ? m + 'p ' : '') + (s % 60) + 'mp'; };
 const num = x => (Math.floor(x * 10) / 10).toLocaleString('hu-HU');
 const liveAmt = r => Math.min(Number(r.cap_amount), Number(r.current_amount) + Number(r.rate_per_hour) * (Date.now() - S.prodAt) / 3.6e6);
@@ -462,18 +470,60 @@ function renderPick() {
     const g = S.games.find(x => x.id === S.sel), rows = S.prod.filter(r => r.county_id === c.id);
     h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ')
       || '<i>csak futó játékban termel</i>') + ` <button class="btn ghost" onclick="rpc('collect_county',{p_county:'${c.id}'})">Begyűjtés</button>`;
+
     const have = new Set(c.buildings.map(b => b.building_type));
+    const completedVarOrVaros = c.buildings.some(x => ['var','varos'].includes(x.building_type) && (x.completes_at === null || new Date(x.completes_at) <= Date.now()));
+    const completedLaktanya = c.buildings.find(x => x.building_type === 'laktanya' && (x.completes_at === null || new Date(x.completes_at) <= Date.now()));
+
     h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut – indítsd el (▶ Indítás).</div>` : '');
     c.buildings.filter(b => new Date(b.completes_at) > Date.now()).forEach(b => {
       h += `<div>${esc(S.btypes[b.building_type])}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
     h += S.btAll.filter(b => !have.has(b.key)).map(b => {
-      const ok = c.owner_id !== S.actAs || (Object.entries(b.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= b.manpower_cost);
-      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(b.name)}</b> – ${effectHtml(b)}<br><small>Ár: ${costHtml(b.cost)}${b.manpower_cost ? ', ' + b.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(b.build_seconds / (g.speed_multiplier || 1))}</small></span>
+      let reason = '';
+      if (b.key === 'laktanya' && !completedVarOrVaros) reason = 'Előbb vár vagy város kell';
+      const ok = !reason && (c.owner_id !== S.actAs || (Object.entries(b.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= b.manpower_cost));
+      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(b.name)}</b> – ${effectHtml(b)}<br><small>${reason ? '<span class="err">' + reason + '</span> · ' : ''}Ár: ${costHtml(b.cost)}${b.manpower_cost ? ', ' + b.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(b.build_seconds / (g.speed_multiplier || 1))}</small></span>
         <button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${b.key}'})">Építés</button></div>`; }).join('');
+
+    // Katonai toborzás – csak kész laktanyával
+    if (completedLaktanya && S.unitTypes.length) {
+      h += `<hr><b>Katonai toborzás</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut.</div>` : '');
+      h += S.unitTypes.map(ut => {
+        const cost = ut.cost || {};
+        const costStr = Object.entries(cost).map(([k,v]) => `${v} ${RES[k]||k}`).join(', ');
+        const canAfford = Object.entries(cost).every(([k,v]) => (S.res[k]||0) >= v) && curMp() >= ut.manpower_cost;
+        const disabled = (!canAfford || g.status !== 'running') ? 'disabled' : '';
+        return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}×<br>
+          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier||1))} · mozgás: 1 vármegye / ${fmtT(ut.move_seconds)}</small></span>
+          <input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}>
+          <button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button>
+        </div>`;
+      }).join('');
+    } else if (!completedLaktanya) {
+      h += `<hr><b>Katonai toborzás</b><div style="color:var(--muted);font-size:13px">Előbb építs laktanyát ebben a vármegyében.</div>`;
+    }
+
+    // Meglévő egységek
+    const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
+    if (countyUnits.length) {
+      h += `<div style="margin-top:8px"><b>Katonaság:</b> ${countyUnits.map(unitLine).join(', ')}</div>`;
+    }
+
     const built = S.btAll.filter(b => have.has(b.key)).map(b => esc(b.name)).join(', ');
     if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}. Típusonként csak 1 építhető.</div>`;
   }
   el.innerHTML = h; tick();
+}
+
+async function recruit(countyId, unitKey) {
+  if (S.demo) return alert('A toborzás demó módban nem elérhető.');
+  const amt = Number($('rec-' + unitKey)?.value);
+  if (!amt || amt < 1) return alert('A mennyiség legalább 1 legyen.');
+  const ut = S.unitTypes.find(x => x.key === unitKey);
+  if (!confirm(`Toborzás: ${amt}× ${ut?.name || unitKey}?`)) return;
+  const { error } = await sb.rpc('recruit_unit', { p_county: countyId, p_type: unitKey, p_amount: amt, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await refreshNow();
 }
 
 function tick() {
@@ -483,6 +533,13 @@ function tick() {
   const pd = $('pend'); if (pd) pd.textContent = Math.floor(S.prod.filter(r => r.owner_id === S.actAs).reduce((a, r) => a + liveAmt(r), 0));
   document.querySelectorAll('[data-end]').forEach(e => { const s = (Date.parse(e.dataset.end) - Date.now()) / 1000; e.textContent = fmtT(s);
     if (s <= 0 && !S.fin[e.dataset.end]) { S.fin[e.dataset.end] = 1; setTimeout(refreshNow, 800); } });
+  document.querySelectorAll('[data-unit-end]').forEach(e => {
+    const u = (S.units || []).find(x => x.id === e.dataset.unitEnd);
+    if (!u || !u.completes_at) { e.textContent = '–'; return; }
+    const s = (Date.parse(u.completes_at) - Date.now()) / 1000;
+    e.textContent = fmtT(s);
+    if (s <= 0 && !S.fin['u_' + u.id]) { S.fin['u_' + u.id] = 1; setTimeout(refreshNow, 800); }
+  });
 }
 
 /* ---------- piac (modal) ---------- */
