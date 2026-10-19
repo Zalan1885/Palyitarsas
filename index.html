@@ -48,9 +48,9 @@
   .offgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
   .office{border:2px solid var(--line);border-left-width:10px;border-radius:10px;padding:10px;background:#fff;cursor:pointer}
   .office.sel{border-color:var(--accent);background:#fbf1e3}.office.off{opacity:.45;cursor:not-allowed}
-  #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:60vh}
+  #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:58vh}
   #map{position:relative;width:1400px;height:1000px;transform-origin:0 0}
-  .county-svg{position:absolute;filter:drop-shadow(0 3px 3px rgba(0,0,0,.12));transition:transform .15s}
+  .county-svg{position:absolute;transition:filter .2s}
   .county-svg:hover{transform:scale(1.04);cursor:pointer;z-index:5}
   #tooltip{position:absolute;background:#2a2119;color:#fff;padding:8px 12px;border-radius:8px;display:none;z-index:1000;font-size:13px;line-height:1.45;max-width:320px;pointer-events:none}
   .zoom{position:sticky;float:right;top:8px;right:8px;margin:8px;z-index:20;display:flex;gap:4px}
@@ -67,7 +67,7 @@
   #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
   #action-bar .btn.active{outline:3px solid var(--gold);outline-offset:1px}
   #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px}
-  @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:45vh}}
+  @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
 <body>
@@ -86,14 +86,36 @@ const BICON = {
   'var': 'svg/var.svg', 'castle': 'svg/var.svg', 'vár': 'svg/var.svg',
   'varos': 'svg/varos.svg', 'city': 'svg/varos.svg', 'város': 'svg/varos.svg'
 };
+const UNIT_ICONS = { puskas: 'svg/puskas.svg', agyus: 'svg/agyus.svg' };
+const DIPLO_COLORS = { war: '#d00000', neutral: null, coop: '#1b5e20', ally: '#6a1b9a' };
+const DIPLO_NAMES  = { war: 'Hadi', neutral: 'Semleges', coop: 'Együttműködés', ally: 'Társ' };
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], actionMode:null, actionSource:null, actionSourceName:null, actionTarget:null};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionSource:null, actionSourceName:null, actionTarget:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
+
+/* ---------- diplo helpers ---------- */
+function diploStatus(a, b) {
+  if (!a || !b || a === b) return 'self';
+  const [x, y] = a < b ? [a, b] : [b, a];
+  const rec = (S.diplomacy||[]).find(d => d.player_a === x && d.player_b === y);
+  return rec?.status || 'neutral';
+}
+function ownerDiplo(ownerId) { return !ownerId ? 'unowned' : ownerId === S.actAs ? 'self' : diploStatus(S.actAs, ownerId); }
+function sameOrder(a, b) {
+  const ma = (S.orderMembers||[]).find(m => m.player_id === a && m.status === 'active');
+  const mb = (S.orderMembers||[]).find(m => m.player_id === b && m.status === 'active');
+  return ma && mb && ma.order_id === mb.order_id;
+}
+function imgFallback(img) {
+  const span = document.createElement('span');
+  span.style.cssText = 'display:inline-block;width:10px;height:10px;background:#888;border:1px solid #222;box-sizing:border-box;';
+  img.replaceWith(span);
+}
 
 /* ---------- indulás ---------- */
 async function boot() {
@@ -118,7 +140,7 @@ async function boot() {
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
-const safeBoot = () => boot().catch(e => { renderAuth(); setMsg('A Supabase nem érhető el ebben a környezetben (' + e.message + '). Próbáld a demót.', true); });
+const safeBoot = () => boot().catch(e => { renderAuth(); setMsg('A Supabase nem érhető el (' + e.message + '). Próbáld a demót.', true); });
 if (sb) sb.auth.onAuthStateChange(ev => { if (['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(ev)) safeBoot(); });
 else setTimeout(renderAuth, 0);
 
@@ -132,7 +154,7 @@ async function loadGames() {
 function huErr(m) {
   m = String(m || '');
   if (/invalid login/i.test(m)) return 'Hibás felhasználónév vagy jelszó.';
-  if (/already registered|already exists/i.test(m)) return 'Ez a felhasználónév (ékezetek nélkül is) már foglalt.';
+  if (/already registered|already exists/i.test(m)) return 'Ez a felhasználónév már foglalt.';
   if (/at least|weak/i.test(m)) return 'A jelszó legalább 6 karakter legyen.';
   if (/rate limit|too many/i.test(m)) return 'Túl sok próbálkozás, várj egy percet.';
   if (/failed to fetch|network/i.test(m)) return 'Nincs kapcsolat a szerverrel.';
@@ -234,7 +256,7 @@ function renderList() {
     <input id="gn" class="grow" placeholder="Játék neve" style="min-width:180px">
     <label>Sebesség ×<input id="gs" type="number" step="0.5" min="0.5" value="1" style="width:76px"></label>
     <label>Győzelmi pont<input id="gv" type="number" placeholder="opc." style="width:90px"></label>
-    <label class="chip"><input id="gt" type="checkbox" checked> Teszt: mind a 6 tisztség betöltése</label>
+    <label class="chip"><input id="gt" type="checkbox" checked> Teszt: mind a 6 tisztség</label>
     <button class="btn" onclick="createGame()">Létrehozás</button></div></div>`;
   const list = S.games.filter(g => adm || g.status !== 'finished' || S.mySeats[g.id]);
   h += `<h2>Játékok</h2>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="games">` + (list.map(g => {
@@ -262,7 +284,7 @@ async function startJoin(id) {
   $('app').innerHTML = header() + `<main><h2>Válassz tisztséget</h2><div class="offgrid">` + S.offices.map(o => {
     const t = S.taken.includes(o.key), cs = S.defs.filter(d => d.start_office === o.key).map(d => d.name).join(', ');
     return `<div class="office ${t ? 'off' : ''}" id="of_${o.key}" style="border-left-color:${o.color}" ${t ? '' : `onclick="selOffice('${o.key}')"`}>
-      <b>${esc(o.name)}</b>${t ? ' <span class="chip">foglalt</span>' : ''}<br><small>${esc(o.duty)}<br><i>${esc(o.ability)}</i><br>Kezdő vármegyék: ${esc(cs)}</small></div>`; }).join('') +
+      <b>${esc(o.name)}</b>${t ? ' <span class="chip">foglalt</span>' : ''}<br><small>${esc(o.duty)}<br><i>${esc(o.ability)}</i><br>Kezdő: ${esc(cs)}</small></div>`; }).join('') +
     `</div><div class="row" style="margin-top:12px"><button class="btn" onclick="doJoin()">Csatlakozom</button><button class="btn ghost" onclick="renderList()">Mégse</button></div><p id="jmsg" class="err"></p></main>`;
 }
 function selOffice(k) { S.pickOffice = k; document.querySelectorAll('.office').forEach(e => e.classList.toggle('sel', e.id === 'of_' + k)); }
@@ -273,7 +295,7 @@ async function doJoin() {
   await loadGames(); await openGame(S.joinGame);
 }
 
-/* ---------- state betöltés ---------- */
+/* ---------- state ---------- */
 async function loadState() {
   if (S.demo) return;
   const [p, c] = await Promise.all([
@@ -284,16 +306,17 @@ async function loadState() {
   S.players = (p.data || []).map(x => ({ ...x, profiles:null }));
   if (S.profile.is_admin) { if (!S.players.some(x => x.id === S.actAs)) S.actAs = S.players[0]?.id || null; }
   else S.actAs = S.players.find(x => x.profile_id === S.user.id)?.id || null;
-  const [b, pr, pd, rs, mp, un, bt, mv] = await Promise.all([
+  const [b, pr, pd, rs, mp, un, bt, mv, dip, ord] = await Promise.all([
     ids.length ? sb.from('buildings').select('county_id,building_type,level,status,completes_at').in('county_id', ids) : { data:[] },
     pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] },
     sb.from('county_production').select('county_id,owner_id,resource,rate_per_hour,cap_amount,current_amount').eq('game_id', S.sel),
     S.actAs ? sb.from('player_resources').select('resource,amount').eq('player_id', S.actAs) : { data:[] },
     S.actAs ? sb.rpc('refresh_manpower', { p_player:S.actAs }) : { data:null },
     sb.from('player_units').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x),
-    sb.from('battles').select('*').eq('game_id', S.sel).eq('status', 'active').then(x => x.error ? { data:[] } : x),
-    sb.from('army_movements').select('*').eq('game_id', S.sel).eq('status', 'marching').then(x => x.error ? { data:[] } : x)]);
-  if (pd.error || mp.error) S.msg = (pd.error || mp.error).message + ' – futott a 005_production_build.sql?';
+    sb.from('battles').select('*').eq('game_id', S.sel).eq('status','active').then(x => x.error ? { data:[] } : x),
+    sb.from('army_movements').select('*').eq('game_id', S.sel).eq('status','marching').then(x => x.error ? { data:[] } : x),
+    sb.from('diplomacy').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x),
+    sb.from('orders').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x)]);
   const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
   S.players = S.players.map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
   S.prod = pd.data || []; S.prodAt = Date.now();
@@ -302,6 +325,12 @@ async function loadState() {
   S.units = un.data || [];
   S.battles = bt.data || [];
   S.movements = mv.data || [];
+  S.diplomacy = dip.data || [];
+  S.orders = ord.data || [];
+  if (S.orders.length) {
+    const ordm = await sb.from('order_members').select('*').in('order_id', S.orders.map(o => o.id));
+    S.orderMembers = ordm.data || [];
+  } else S.orderMembers = [];
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
@@ -315,7 +344,7 @@ async function openGame(id) {
   if (S.ch) sb.removeChannel(S.ch);
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
   S.ch = sb.channel('g' + id);
-  ['counties', 'buildings', 'game_players', 'player_resources', 'player_units', 'battles', 'army_movements'].forEach(tb =>
+  ['counties','buildings','game_players','player_resources','player_units','battles','army_movements','diplomacy','orders','order_members'].forEach(tb =>
     S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
   S.ch.subscribe();
 }
@@ -331,10 +360,11 @@ const seedTest = () => rpc('admin_seed_offices', { p_game:S.sel });
 const assign = (cid, pid) => rpc('admin_assign_county', { p_county:cid, p_player:pid || null });
 async function delGame() {
   if (S.demo) { S.sel = null; return renderList(); }
-  if (!confirm('Biztosan törlöd a játékot?')) return;
+  if (!confirm('Biztosan törlöd?')) return;
   const { error } = await sb.from('games').delete().eq('id', S.sel);
   S.msg = error?.message || ''; await loadGames(); renderList();
 }
+
 function renderGame() {
   const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
   const adm = S.profile.is_admin, cnt = id => S.counties.filter(c => c.owner_id === id).length;
@@ -347,8 +377,14 @@ function renderGame() {
     <button class="btn ghost" onclick="seedTest()">Teszt</button>
     <button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>
     ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
-    <div class="row" style="margin-top:10px">` + (S.players.map(p => `<span class="chip" style="background:${esc(p.color)}26"><span class="dot" style="background:${esc(p.color)}"></span>
-      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} vármegye</span>`).join('') || 'Még nincs játékos.') + `</div>
+    <div class="row" style="margin-top:10px">` + (S.players.map(p => {
+      const d = p.id === S.actAs ? 'self' : diploStatus(S.actAs, p.id);
+      const dCol = DIPLO_COLORS[d] || '#888';
+      const dName = DIPLO_NAMES[d] || 'Te';
+      return `<span class="chip" style="background:${esc(p.color)}26;border:2px solid ${dCol}">
+        <span class="dot" style="background:${esc(p.color)}"></span>
+        ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} várm. · <b style="color:${dCol}">${dName}</b></span>`;
+    }).join('') || 'Még nincs játékos.') + `</div>
     <div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>
     <div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div>
     <div id="msz"><div id="map"></div></div></div>
@@ -358,6 +394,9 @@ function renderGame() {
       <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')">→ Mozgatás</button>
       <button class="btn ghost" onclick="cancelAction()" ${!S.actionMode?'style="display:none"':''}>✕ Mégse</button>
       <span id="action-hint"></span>
+      <span class="grow"></span>
+      <button class="btn ghost" onclick="openDiplomacy()">📜 Diplomácia</button>
+      <button class="btn ghost" onclick="openOrders()">🏰 Vitézi rend</button>
     </div>
     </main>`;
   buildMap(); setZoom(Z);
@@ -393,15 +432,25 @@ function isVarOrVaros(b){ const k=_bKey(b),n=_bName(b); return ['var','varos','c
 function isComplete(b){ return !b.completes_at || new Date(b.completes_at) <= Date.now(); }
 function isSameBType(stored, uiB){ return _bKey(stored)===_norm(uiB.key) || _bName(stored)===_norm(uiB.name); }
 function biconFor(b) { return BICON[_norm(b.building_type)] || BICON[_norm(S.btypes[b.building_type])] || null; }
+
 function paint(n) {
   const box = els[n]; if (!box) return;
-  const c = S.byName[n], p = c && S.players.find(x => x.id === c.owner_id);
+  const c = S.byName[n]; if (!c) return;
+  const p = S.players.find(x => x.id === c.owner_id);
   const svg = box.querySelector('svg');
   if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
-  // battle indicator
-  const battleHere = (S.battles || []).find(b => b.county_id === c?.id && b.status === 'active');
-  box.style.boxShadow = battleHere ? '0 0 15px 5px rgba(220,0,0,.75)' : '';
-  // icons
+
+  // Diplo border + battle glow
+  const diplo = ownerDiplo(c.owner_id);
+  const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
+  if (battleHere) {
+    box.style.filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
+  } else {
+    const borderColor = DIPLO_COLORS[diplo];
+    box.style.filter = borderColor ? `drop-shadow(0 0 6px ${borderColor}) drop-shadow(0 0 3px ${borderColor})` : '';
+  }
+
+  // Building icons
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
     iconBox = document.createElement('div');
@@ -410,7 +459,7 @@ function paint(n) {
     box.appendChild(iconBox);
   }
   const icons = [], seen = new Set();
-  for (const b of (c?.buildings || [])) {
+  for (const b of (c.buildings || [])) {
     const src = biconFor(b);
     if (!src || seen.has(src)) continue;
     seen.add(src);
@@ -420,7 +469,30 @@ function paint(n) {
   iconBox.innerHTML = icons.map(({ src, inProgress }) =>
     `<img src="${src}" alt="" style="width:14px;height:14px;object-fit:contain;opacity:${inProgress ? '.4' : '1'};filter:drop-shadow(0 1px 1px rgba(0,0,0,.7))">`
   ).join('');
+
+  // Own + allied units at bottom
+  let unitsBox = box.querySelector('.units');
+  if (!unitsBox) {
+    unitsBox = document.createElement('div');
+    unitsBox.className = 'units';
+    unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;pointer-events:none;z-index:4;';
+    box.appendChild(unitsBox);
+  }
+  const visible = (S.units || []).filter(u => u.county_id === c.id && (
+    u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
+  const uHtml = visible.map(u => {
+    const isSelf = u.player_id === S.actAs;
+    const bg = isSelf ? '#555' : '#9c27b0';
+    const src = UNIT_ICONS[u.unit_type];
+    const icon = src
+      ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;" alt="">`
+      : `<span style="display:inline-block;width:10px;height:10px;background:${bg};border:1px solid #222;box-sizing:border-box;"></span>`;
+    return `<span style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;">
+      ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${u.amount}</span></span>`;
+  }).join('');
+  unitsBox.innerHTML = uHtml;
 }
+
 function unitLine(u) {
   const ut = S.unitTypes.find(x => x.key === u.unit_type);
   const name = ut?.name || u.unit_type;
@@ -442,7 +514,9 @@ function info(n) {
   }).join(', ') || '–';
   const battleHere = (S.battles || []).find(x => x.county_id === c.id && x.status === 'active');
   const battleStr = battleHere ? `<br><b style="color:#b00020">⚔ CSATA FOLYIK</b>` : '';
-  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}<br>
+  const diplo = ownerDiplo(c.owner_id);
+  const diploStr = diplo === 'self' ? '' : diplo === 'unowned' ? '<br><small style="color:#888">Uralatlan (1-es helyőrség)</small>' : `<br><small>Viszony: <b style="color:${DIPLO_COLORS[diplo] || '#666'}">${DIPLO_NAMES[diplo] || diplo}</b></small>`;
+  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}${diploStr}<br>
     Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}<br>Katonaság: ${esc(unitStr)}${battleStr}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
@@ -462,22 +536,23 @@ const refreshNow = async () => {
 };
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
 
-/* ---------- pick: action mode figyelés ---------- */
+/* ---------- action mode ---------- */
 function pick(n) {
   const c = S.byName[n];
   if (S.actionMode && c) {
     if (!S.actionSource) {
-      if (c.owner_id !== S.actAs) {
-        updateActionHint('Ez nem a te vármegyéd — válassz sajátot forrásként.');
-        return;
-      }
+      if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd.'); return; }
       S.actionSource = c.id; S.actionSourceName = n;
-      updateActionHint(`Forrás: ${n}. Kattints a cél vármegyére.`);
+      updateActionHint(`Forrás: ${n}. Kattints a célra.`);
       return;
     }
     if (c.id !== S.actionSource) {
+      if (S.actionMode === 'attack') {
+        const d = ownerDiplo(c.owner_id);
+        if (d === 'coop' || d === 'ally') { alert('Szövetségesre / együttműködőre nem támadhatsz.'); return; }
+        if (d === 'self') { alert('Saját vármegyére nem támadhatsz.'); return; }
+      }
       S.actionTarget = c.id;
-      updateActionHint(`Cél: ${n}. Válaszd ki az egységeket.`);
       openSendModal(S.actionSource, c.id, S.actionMode);
       return;
     }
@@ -498,34 +573,43 @@ function cancelAction() {
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
 
 /* ---------- send modal ---------- */
-async function openSendModal(srcCountyId, tgtCountyId, action) {
+function sendActionNote(tgtCounty, action) {
+  const owner = tgtCounty.owner_id;
+  if (!owner) return '🏴 Uralatlan — 1-es támadású helyőrség védi. Azonnali elfoglalás 10% HP veszteséggel.';
+  if (owner === S.actAs) return '🏰 Saját terület — békés erősítés.';
+  const d = diploStatus(S.actAs, owner);
+  if (d === 'coop') return '🤝 Együttműködés — békés áthaladás.';
+  if (d === 'ally') return '💜 Társ — békés áthaladás. Látod egységeit.';
+  if (d === 'neutral') return '⚠ Semleges — a belépés HÁBORÚT deklarál, és csata lesz!';
+  if (d === 'war') return '⚔ Hadi állapot — csata lesz.';
+  return '';
+}
+async function openSendModal(srcId, tgtId, action) {
   if ($('send-modal')) return;
   const units = (S.units || []).filter(u =>
-    u.county_id === srcCountyId && u.player_id === S.actAs && u.status === 'ready' &&
+    u.county_id === srcId && u.player_id === S.actAs && u.status === 'ready' &&
     (!u.completes_at || new Date(u.completes_at) <= Date.now()));
   if (!units.length) { alert('Nincs mozgatható egység a forrásban.'); cancelAction(); return; }
 
-  const tgtBattle = (S.battles || []).find(b => b.county_id === tgtCountyId && b.status === 'active');
+  const tgtC = S.counties.find(x => x.id === tgtId);
+  const srcC = S.counties.find(x => x.id === srcId);
+  if (!tgtC || !srcC) { cancelAction(); return; }
+  const tgtBattle = (S.battles || []).find(b => b.county_id === tgtId && b.status === 'active');
   if (action === 'attack' && tgtBattle) { alert('Már folyik csata a célban.'); return; }
 
-  const srcC = S.counties.find(x => x.id === srcCountyId);
-  const tgtC = S.counties.find(x => x.id === tgtCountyId);
-  const srcName = srcC?.county_definitions.name || '?';
-  const tgtName = tgtC?.county_definitions.name || '?';
-  const tgtOwner = S.players.find(x => x.id === tgtC?.owner_id);
-  const isEnemy = tgtC?.owner_id && tgtC.owner_id !== S.actAs;
-
+  const note = sendActionNote(tgtC, action);
   let html = `<div class="modal-backdrop" id="send-modal" onclick="if(event.target===this)closeSendModal()">
     <div class="modal">
       <button class="close" onclick="closeSendModal()">✕</button>
       <h2>${action === 'attack' ? '⚔ Támadás' : action === 'defend' ? '🛡 Védekezés' : '→ Mozgatás'}</h2>
-      <p><b>${esc(srcName)}</b> → <b>${esc(tgtName)}</b>${tgtOwner ? ' (' + esc(tgtOwner.nation_name) + ')' : ' (senkié)'}</p>
+      <p><b>${esc(srcC.county_definitions.name)}</b> → <b>${esc(tgtC.county_definitions.name)}</b></p>
+      <p style="padding:8px;background:#f8f4e8;border-radius:6px;font-size:13px">${note}</p>
       <div>`;
   for (const u of units) {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
     const hpPct = Math.round((u.hp_ratio || 1) * 100);
     html += `<div class="row" style="margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:6px">
-      <span class="grow"><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount} <small>(${hpPct}% HP · ${ut?.hp || '?'} HP/db)</small></span>
+      <span class="grow"><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount} <small>(${hpPct}% HP)</small></span>
       <input type="number" id="send-${u.id}" min="0" max="${u.amount}" value="${u.amount}" style="width:80px">
     </div>`;
   }
@@ -549,12 +633,9 @@ async function confirmSend(action) {
   const sends = units.map(u => ({ id: u.id, amount: Number($('send-' + u.id)?.value) || 0 })).filter(x => x.amount > 0);
   if (!sends.length) { $('send-msg').textContent = 'Válassz legalább 1 egységet.'; return; }
 
-  const tgtBattle = (S.battles || []).find(b => b.county_id === tgt && b.status === 'active');
-  const sqlAction = (action === 'attack' && !tgtBattle) ? 'attack' : 'move';
-
   let ok = 0, errs = [];
   for (const s of sends) {
-    const { error } = await sb.rpc('send_army', { p_unit_id: s.id, p_to_county: tgt, p_amount: s.amount, p_action: sqlAction, p_player: S.actAs });
+    const { error } = await sb.rpc('send_army', { p_unit_id: s.id, p_to_county: tgt, p_amount: s.amount, p_action: action === 'attack' ? 'attack' : 'move', p_player: S.actAs });
     if (error) errs.push(error.message); else ok++;
   }
   closeSendModal();
@@ -562,7 +643,7 @@ async function confirmSend(action) {
   if (ok) { cancelAction(); await refreshNow(); }
 }
 
-/* ---------- split ---------- */
+/* ---------- split / retreat ---------- */
 async function splitUnit(unitId) {
   const u = (S.units || []).find(x => x.id === unitId);
   if (!u) return;
@@ -575,7 +656,7 @@ async function splitUnit(unitId) {
   await refreshNow();
 }
 async function retreat(battleId) {
-  if (!confirm('Visszavonulsz? Az egységeid fele életpontja elveszik.')) return;
+  if (!confirm('Visszavonulsz? Az egységeid fele HP-ja elveszik.')) return;
   const { error } = await sb.rpc('retreat_from_battle', { p_battle_id: battleId, p_player: S.actAs });
   if (error) return alert(error.message);
   await refreshNow();
@@ -585,26 +666,24 @@ async function retreat(battleId) {
 function renderStatus() {
   const el = $('status'); if (!el) return;
   if (S.demo) { el.innerHTML = ''; return; }
-  if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged ebben a játékban.</span>'; return; }
+  if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged.</span>'; return; }
   const adm = S.profile.is_admin;
   el.innerHTML = `<div class="row">` +
-    (adm ? `Megfigyelt játékos: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('')}</select>` : '') +
+    (adm ? `Megfigyelt: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('')}</select>` : '') +
     Object.keys(RES).map(k => `<span class="chip" style="${S.res[k] > 0 ? '' : 'opacity:.5'}">${RES[k]}: <b>${num(S.res[k] || 0)}</b></span>`).join('') +
     `<span class="chip">👥 munkaerő: <b id="mpv">–</b></span></div>
     <div class="row" style="margin-top:6px"><button class="btn" onclick="rpc('collect_all',{p_player:S.actAs})">Összes begyűjtése (<span id="pend">0</span> db)</button>` +
     `<button class="btn" onclick="openMarket()">🏪 Piac</button>` +
-    (adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 mindenből (teszt)</button>` : '') + `</div>`;
+    (adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 minden (teszt)</button>` : '') + `</div>`;
 }
 
-/* ---------- pick panel ---------- */
 function renderPick() {
   const el = $('pick'); if (!el) return;
   const n = S.picked;
-  if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'; return; }
+  if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; return; }
   const c = S.byName[n]; let h = info(n);
   if (!c) { el.innerHTML = h; return; }
 
-  // battle info
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   if (battleHere) {
     const atk = S.players.find(x => x.id === battleHere.attacker_id);
@@ -646,9 +725,9 @@ function renderPick() {
 
     h += `<hr><b>Katonai toborzás</b>`;
     if (!S.unitTypes.length) {
-      h += `<div class="err" style="font-size:13px">Az egységtípusok nincsenek betöltve – futtattad a 007_units.sql-t?</div>`;
+      h += `<div class="err" style="font-size:13px">Futtattad a 007_units.sql-t?</div>`;
     } else if (!laktanyaAny) {
-      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya – előbb építs egyet.</div>`;
+      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya.</div>`;
     } else if (!laktanyaReady) {
       const left = (new Date(laktanyaAny.completes_at) - Date.now()) / 1000;
       h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT(left)}</b>.</div>`;
@@ -659,14 +738,13 @@ function renderPick() {
         const canAfford = Object.entries(cost).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= ut.manpower_cost;
         const disabled = (!canAfford || g.status !== 'running') ? 'disabled' : '';
         return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}× · ${ut.hp || '?'} HP<br>
-          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))} · mozgás: 1 vármegye / ${fmtT(ut.move_seconds)}</small></span>
+          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))}</small></span>
           <input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}>
           <button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button>
         </div>`;
       }).join('');
     }
 
-    // Katonaság
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
     if (countyUnits.length) {
       h += `<hr><b>Katonaság</b>`;
@@ -676,13 +754,12 @@ function renderPick() {
         const training = u.completes_at && new Date(u.completes_at) > Date.now();
         const myUnit = u.player_id === S.actAs;
         h += `<div class="row" style="margin:4px 0">
-          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b> <small>(${hpPct}% HP${training ? ' · kiképzés alatt' : ''})</small></span>
+          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b> <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>
           ${myUnit && !training && u.amount > 1 ? `<button class="btn ghost" onclick="splitUnit('${u.id}')">Hasítás</button>` : ''}
         </div>`;
       }
     }
 
-    // Mozgásban
     const inTransit = (S.movements || []).filter(m => m.player_id === S.actAs);
     if (inTransit.length) {
       h += `<hr><b>Mozgásban</b>`;
@@ -694,15 +771,15 @@ function renderPick() {
     }
 
     const built = S.btAll.filter(uiB => c.buildings.some(st => isSameBType(st, uiB))).map(b => esc(b.name)).join(', ');
-    if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}. Típusonként csak 1.</div>`;
+    if (built) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Már megépült: ${built}.</div>`;
   }
   el.innerHTML = h; tick();
 }
 
 async function recruit(countyId, unitKey) {
-  if (S.demo) return alert('A toborzás demó módban nem elérhető.');
+  if (S.demo) return alert('Demóban nem.');
   const amt = Number($('rec-' + unitKey)?.value);
-  if (!amt || amt < 1) return alert('A mennyiség legalább 1 legyen.');
+  if (!amt || amt < 1) return alert('Legalább 1.');
   const ut = S.unitTypes.find(x => x.key === unitKey);
   if (!confirm(`Toborzás: ${amt}× ${ut?.name || unitKey}?`)) return;
   const { error } = await sb.rpc('recruit_unit', { p_county: countyId, p_type: unitKey, p_amount: amt, p_player: S.actAs });
@@ -726,9 +803,167 @@ function tick() {
   });
 }
 
+/* ---------- diplomacy modal ---------- */
+function openDiplomacy() {
+  if (S.demo) return alert('Demóban nem.');
+  if (!S.actAs || $('diplo-modal')) return;
+  const others = S.players.filter(p => p.id !== S.actAs);
+  let h = `<div class="modal-backdrop" id="diplo-modal" onclick="if(event.target===this)closeDiplomacy()">
+    <div class="modal">
+      <button class="close" onclick="closeDiplomacy()">✕</button>
+      <h2>📜 Diplomácia</h2>
+      <p style="color:var(--muted);font-size:13px">Állítsd be a viszonyt minden játékoshoz. Társ csak vitézi renden belül lehetséges.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px">
+        <span>⚔ Hadi: <span style="background:#d00000;color:#fff;padding:1px 6px;border-radius:4px">vörös szél</span></span>
+        <span>Semleges: nincs szín</span>
+        <span>🤝 Együttműk.: <span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:4px">zöld szél</span></span>
+        <span>💜 Társ: <span style="background:#6a1b9a;color:#fff;padding:1px 6px;border-radius:4px">lila szél</span></span>
+      </div>
+      <div>`;
+  for (const p of others) {
+    const st = diploStatus(S.actAs, p.id);
+    const stName = DIPLO_NAMES[st] || 'Semleges';
+    const stColor = DIPLO_COLORS[st] || '#888';
+    const inOrder = sameOrder(S.actAs, p.id);
+    h += `<div class="mitem">
+      <div class="row"><b class="grow">${esc(p.nation_name)}</b>
+        <span class="chip" style="background:${stColor || '#888'};color:#fff">${stName}</span>
+        ${inOrder ? '<span class="chip" style="background:#6a1b9a;color:#fff">Rendtag</span>' : ''}
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" onclick="setDiplo('${p.id}','war')" ${st==='war'||inOrder?'disabled':''}>⚔ Hadi</button>
+        <button class="btn ghost" onclick="setDiplo('${p.id}','neutral')" ${st==='neutral'||inOrder?'disabled':''}>Semleges</button>
+        <button class="btn ghost" onclick="setDiplo('${p.id}','coop')" ${st==='coop'||inOrder?'disabled':''}>🤝 Együttműk.</button>
+      </div>
+    </div>`;
+  }
+  h += `</div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeDiplomacy() { $('diplo-modal')?.remove(); }
+async function setDiplo(targetId, status) {
+  const { error } = await sb.rpc('set_diplomacy', { p_target: targetId, p_status: status, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeDiplomacy(); openDiplomacy();
+}
+
+/* ---------- orders modal ---------- */
+function openOrders() {
+  if (S.demo) return alert('Demóban nem.');
+  if (!S.actAs || $('orders-modal')) return;
+  const myMembership = (S.orderMembers || []).find(m => m.player_id === S.actAs);
+  const myOrder = myMembership ? (S.orders || []).find(o => o.id === myMembership.order_id) : null;
+
+  let h = `<div class="modal-backdrop" id="orders-modal" onclick="if(event.target===this)closeOrders()">
+    <div class="modal">
+      <button class="close" onclick="closeOrders()">✕</button>
+      <h2>🏰 Vitézi rend</h2>`;
+
+  if (!myMembership) {
+    h += `<p>Még nem vagy tagja rendnek. Alapíts újat, vagy jelentkezz egy létezőbe.</p>
+      <div class="mitem">
+        <b>Új rend alapítása</b>
+        <div class="row" style="margin-top:6px">
+          <input id="order-name" placeholder="Rend neve" maxlength="40" class="grow">
+          <button class="btn" onclick="createOrder()">Alapítás</button>
+        </div>
+      </div>`;
+    const activeOrders = (S.orders || []).filter(o => {
+      const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
+      return active.length < 3;
+    });
+    if (activeOrders.length) {
+      h += `<h3>Létező rendek</h3>`;
+      for (const o of activeOrders) {
+        const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
+        const members = active.map(m => {
+          const p = S.players.find(x => x.id === m.player_id);
+          return p ? esc(p.nation_name) : '?';
+        }).join(', ');
+        const pending = (S.orderMembers || []).find(m => m.order_id === o.id && m.player_id === S.actAs && m.status === 'pending');
+        h += `<div class="mitem">
+          <b>${esc(o.name)}</b> <small>(${active.length}/3 tag)</small><br>
+          <small>Tagok: ${members}</small>
+          ${pending
+            ? `<div class="chip" style="background:#ffe;border:1px solid #cc0">⏳ Jelentkezés függőben</div>`
+            : `<button class="btn ghost" onclick="applyOrder('${o.id}')">Jelentkezés</button>`}
+        </div>`;
+      }
+    }
+  } else {
+    const active = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'active');
+    const pending = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'pending');
+    const isFounder = myOrder?.founder_id === S.actAs;
+
+    h += `<h3>${esc(myOrder?.name || '?')}</h3>
+      <p>Tagok (${active.length}/3):</p>`;
+    for (const m of active) {
+      const p = S.players.find(x => x.id === m.player_id);
+      const isMe = m.player_id === S.actAs;
+      h += `<div class="row" style="margin:4px 0;padding:6px;background:#f8f4e8;border-radius:6px">
+        <span class="grow">${esc(p?.nation_name || '?')}${isMe ? ' (te)' : ''}${m.player_id === myOrder?.founder_id ? ' 👑' : ''}</span>
+        ${isFounder && !isMe ? `<button class="btn danger" onclick="kickMember('${m.id}')">Kirúgás</button>` : ''}
+      </div>`;
+    }
+    if (pending.length) {
+      h += `<h3>Jelentkezések</h3>`;
+      for (const m of pending) {
+        const p = S.players.find(x => x.id === m.player_id);
+        h += `<div class="row" style="margin:4px 0;padding:6px;background:#fff5e0;border-radius:6px">
+          <span class="grow">${esc(p?.nation_name || '?')}</span>
+          ${isFounder
+            ? `<button class="btn" onclick="acceptMember('${m.id}')">Elfogad</button>
+               <button class="btn ghost" onclick="declineMember('${m.id}')">Elutasít</button>`
+            : '<span class="chip">várakozik</span>'}
+        </div>`;
+      }
+    }
+    h += `<div class="row" style="margin-top:10px">
+      <button class="btn danger" onclick="leaveOrder('${myMembership.order_id}')">${isFounder ? 'Rend feloszlatása' : 'Kilépés'}</button>
+    </div>`;
+  }
+  h += `</div></div>`;
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeOrders() { $('orders-modal')?.remove(); }
+async function createOrder() {
+  const name = $('order-name')?.value?.trim();
+  if (!name) return alert('Adj nevet.');
+  const { error } = await sb.rpc('create_order', { p_game: S.sel, p_name: name, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+async function applyOrder(orderId) {
+  const { error } = await sb.rpc('apply_to_order', { p_order: orderId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+async function acceptMember(memberId) {
+  const { error } = await sb.rpc('accept_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+async function declineMember(memberId) {
+  const { error } = await sb.rpc('decline_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+async function kickMember(memberId) {
+  if (!confirm('Kirúgod?')) return;
+  const { error } = await sb.rpc('kick_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+async function leaveOrder(orderId) {
+  if (!confirm('Biztosan?')) return;
+  const { error } = await sb.rpc('leave_order', { p_order: orderId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGame(); closeOrders(); openOrders();
+}
+
 /* ---------- piac ---------- */
 async function openMarket() {
-  if (S.demo) { alert('A piac demó módban nem elérhető.'); return; }
+  if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('market-backdrop')) return;
   document.body.insertAdjacentHTML('beforeend',
     `<div class="modal-backdrop" id="market-backdrop" onclick="if(event.target===this)closeMarket()">
