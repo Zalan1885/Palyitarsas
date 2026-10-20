@@ -66,7 +66,6 @@
   #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;min-height:52px}
   #action-bar .btn.active{outline:3px solid var(--gold);outline-offset:1px}
   #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px;flex-basis:100%}
-  /* Egység ikonok: mindig a vármegye fölött, nem kattinthatók */
   .units{pointer-events:none}
   .unit-chip{display:inline-flex;align-items:center;gap:3px;background:#fff;border:1px solid #ccc;border-radius:8px;padding:4px 8px;cursor:pointer;user-select:none}
   .unit-chip.on{background:#e8f5e9;border-color:var(--ok)}
@@ -96,6 +95,14 @@ const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
 let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
+/* === ÚJ: egység-kész állapot ellenőrzés === */
+function isUnitReady(u) {
+  if (!u) return false;
+  if (u.status === 'ready') return true;
+  if (u.status === 'training' && u.completes_at && new Date(u.completes_at) <= Date.now()) return true;
+  return false;
+}
+
 function diploStatus(a, b) {
   if (!a || !b || a === b) return 'self';
   const [x, y] = a < b ? [a, b] : [b, a];
@@ -115,7 +122,7 @@ function imgFallback(img) {
 }
 function getSourceUnits() {
   if (!S.actionSource) return [];
-  return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+  return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
 }
 
 async function boot() {
@@ -328,7 +335,7 @@ async function loadState() {
     S.orderMembers = ordm.data || [];
   } else S.orderMembers = [];
   if (S.selectedUnits.length) {
-    const validIds = new Set((S.units||[]).filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now())).map(u => u.id));
+    const validIds = new Set((S.units||[]).filter(u => u.player_id === S.actAs && isUnitReady(u)).map(u => u.id));
     S.selectedUnits = S.selectedUnits.filter(id => validIds.has(id));
   }
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
@@ -339,7 +346,10 @@ async function loadState() {
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
 }
 async function openGame(id) {
-  S.sel = id; Z = null; await loadState(); renderGame();
+  S.sel = id; Z = null;
+  /* ÚJ: kiképzés-befejezett egységek normalizálása az első betöltésnél */
+  try { await sb.rpc('tick_military', {p_game:id}); } catch(e){ console.warn('tick_military:', e.message); }
+  await loadState(); renderGame();
   if (S.demo) return;
   if (S.ch) sb.removeChannel(S.ch);
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
@@ -647,7 +657,7 @@ function info(n) {
   const units = (S.units || []).filter(u => u.county_id === c.id);
   const unitStr = units.map(u => {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
-    const ready = !u.completes_at || new Date(u.completes_at) <= Date.now();
+    const ready = isUnitReady(u);
     const hpPct = Math.round((u.hp_ratio || 1) * 100);
     return `${u.amount}× ${ut?.name || u.unit_type}${ready ? ` (${hpPct}%)` : ' (kik.)'}`;
   }).join(', ') || '–';
@@ -678,13 +688,12 @@ const refreshNow = async () => {
 };
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
 
-/* ---------- Akció fázisok ---------- */
 function pick(n) {
   const c = S.byName[n]; if (!c) return;
 
   if (S.actionPhase === 'select-county') {
     if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd. Válassz sajátot forrásként.'); return; }
-    const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+    const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
     if (!units.length) { updateActionHint('Ebben a vármegyében nincs mozgatható egységed.'); return; }
     S.actionSource = c.id;
     S.actionSourceName = n;
@@ -773,7 +782,6 @@ function toggleUnitSelection(unitId) {
   if (goBtn) goBtn.disabled = S.selectedUnits.length === 0;
   const chip = $('chk-' + unitId)?.closest('.unit-chip');
   if (chip) chip.classList.toggle('on', S.selectedUnits.includes(unitId));
-  // Update map borders only
   for (const box of Object.values(els)) {
     const unitsBox = box.querySelector('.units');
     if (!unitsBox) continue;
@@ -1000,7 +1008,7 @@ function renderPick() {
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
     if (countyUnits.length) {
       h += `<hr><b>Katonaság</b>`;
-      const myReady = countyUnits.filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+      const myReady = countyUnits.filter(u => u.player_id === S.actAs && isUnitReady(u));
       const groups = {};
       for (const u of myReady) (groups[u.unit_type] = groups[u.unit_type] || []).push(u);
       for (const [type, list] of Object.entries(groups)) {
@@ -1014,7 +1022,7 @@ function renderPick() {
       for (const u of countyUnits) {
         const ut = S.unitTypes.find(x => x.key === u.unit_type);
         const hpPct = Math.round((u.hp_ratio || 1) * 100);
-        const training = u.completes_at && new Date(u.completes_at) > Date.now();
+        const training = !isUnitReady(u);
         const myUnit = u.player_id === S.actAs;
         h += `<div class="row" style="margin:4px 0">
           <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b> <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>
