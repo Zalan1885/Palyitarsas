@@ -95,14 +95,12 @@ const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
 let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
-/* === ÚJ: egység-kész állapot ellenőrzés === */
 function isUnitReady(u) {
   if (!u) return false;
   if (u.status === 'ready') return true;
   if (u.status === 'training' && u.completes_at && new Date(u.completes_at) <= Date.now()) return true;
   return false;
 }
-
 function diploStatus(a, b) {
   if (!a || !b || a === b) return 'self';
   const [x, y] = a < b ? [a, b] : [b, a];
@@ -123,6 +121,23 @@ function imgFallback(img) {
 function getSourceUnits() {
   if (!S.actionSource) return [];
   return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
+}
+function parsePOS(name) {
+  const p = POS[name];
+  if (!p) return null;
+  return { x: parseFloat(p.left) || 0, y: parseFloat(p.top) || 0 };
+}
+function isAdjacentByName(a, b) {
+  const pa = parsePOS(a), pb = parsePOS(b);
+  if (!pa || !pb) return false;
+  const dx = pa.x - pb.x, dy = pa.y - pb.y;
+  return dx*dx + dy*dy < 4225;
+}
+function adjacentToSource(countyName) {
+  if (!S.actionSource) return false;
+  const srcC = S.counties.find(c => c.id === S.actionSource);
+  if (!srcC) return false;
+  return isAdjacentByName(srcC.county_definitions.name, countyName);
 }
 
 async function boot() {
@@ -347,7 +362,6 @@ async function loadState() {
 }
 async function openGame(id) {
   S.sel = id; Z = null;
-  /* ÚJ: kiképzés-befejezett egységek normalizálása az első betöltésnél */
   try { await sb.rpc('tick_military', {p_game:id}); } catch(e){ console.warn('tick_military:', e.message); }
   await loadState(); renderGame();
   if (S.demo) return;
@@ -591,16 +605,26 @@ function paint(n) {
   const diplo = ownerDiplo(c.owner_id);
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   const isSource = S.actionPhase && S.actionSource === c.id;
+  const inTargetPhase = S.actionPhase === 'select-target';
+  const isAdjacent = inTargetPhase && S.actionSource && !isSource && adjacentToSource(n);
+  const isNonAdjacent = inTargetPhase && S.actionSource && !isSource && !isAdjacent;
 
   let filter = '';
   if (isSource) {
     filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
   } else if (battleHere) {
     filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
-  } else if (DIPLO_COLORS[diplo]) {
+  } else if (isAdjacent) {
+    filter = 'drop-shadow(0 0 7px #b8892b) drop-shadow(0 0 4px #b8892b)';
+  } else if (DIPLO_COLORS[diplo] && !isNonAdjacent) {
     filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   }
   if (box.style.filter !== filter) box.style.filter = filter;
+
+  const opacity = isNonAdjacent ? '0.2' : '1';
+  if (box.style.opacity !== opacity) box.style.opacity = opacity;
+  const cursor = isNonAdjacent ? 'not-allowed' : 'pointer';
+  if (box.style.cursor !== cursor) box.style.cursor = cursor;
 
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
@@ -628,6 +652,7 @@ function paint(n) {
     unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;pointer-events:none;';
     box.appendChild(unitsBox);
   }
+  /* Csak a saját és rendtárs (ally) egységei látszódnak a térképen */
   const visible = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const uHtml = visible.map(u => {
@@ -654,19 +679,44 @@ function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs)`;
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
+
+  /* Minden játékos egységei, függetlenül a viszonytól */
   const units = (S.units || []).filter(u => u.county_id === c.id);
-  const unitStr = units.map(u => {
+  const unitsByPlayer = {};
+  for (const u of units) {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
-    const ready = isUnitReady(u);
     const hpPct = Math.round((u.hp_ratio || 1) * 100);
-    return `${u.amount}× ${ut?.name || u.unit_type}${ready ? ` (${hpPct}%)` : ' (kik.)'}`;
-  }).join(', ') || '–';
+    const training = !isUnitReady(u);
+    const name = ut?.name || u.unit_type;
+    const tag = `${u.amount}× ${name}${hpPct < 100 ? ` (${hpPct}%)` : ''}${training ? ' (kik.)' : ''}`;
+    (unitsByPlayer[u.player_id] = unitsByPlayer[u.player_id] || []).push(tag);
+  }
+  let unitStr = '';
+  if (Object.keys(unitsByPlayer).length) {
+    for (const [pid, tags] of Object.entries(unitsByPlayer)) {
+      const pl = S.players.find(x => x.id === pid);
+      const pname = pl?.nation_name || '(?)';
+      unitStr += `<br>· <b>${esc(pname)}</b>: ${tags.join(', ')}`;
+    }
+  } else {
+    unitStr = ' –';
+  }
+
   const battleHere = (S.battles || []).find(x => x.county_id === c.id && x.status === 'active');
   const battleStr = battleHere ? `<br><b style="color:#b00020">⚔ CSATA FOLYIK</b>` : '';
+
   const diplo = ownerDiplo(c.owner_id);
-  const diploStr = diplo === 'self' ? '' : diplo === 'unowned' ? '<br><small style="color:#888">Uralatlan (1-es helyőrség)</small>' : `<br><small>Viszony: <b style="color:${DIPLO_COLORS[diplo] || '#666'}">${DIPLO_NAMES[diplo] || diplo}</b></small>`;
-  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}${diploStr}<br>
-    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>Egyéb: ${esc(d.features.join(', ')) || '–'}<br>Épületek: ${esc(b)}<br>Katonaság: ${esc(unitStr)}${battleStr}`;
+  let diploStr = '';
+  if (diplo === 'self') diploStr = ' <b style="color:var(--ok)">(te)</b>';
+  else if (diplo === 'unowned') diploStr = ' <small style="color:#888">(uralatlan — 1-es helyőrség)</small>';
+  else diploStr = ` <small>· viszony: <b style="color:${DIPLO_COLORS[diplo] || '#666'}">${DIPLO_NAMES[diplo] || diplo}</b></small>`;
+
+  return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>
+    Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}${diploStr}<br>
+    Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>
+    Egyéb: ${esc(d.features.join(', ')) || '–'}<br>
+    Épületek: ${esc(b)}<br>
+    Katonaság:${unitStr}${battleStr}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
 function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
@@ -682,7 +732,7 @@ const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_b
 const refreshNow = async () => {
   if (!S.sel) return;
   try { await sb.rpc('tick_military', {p_game:S.sel}); } catch(e){ console.warn('tick_military:', e.message); }
-  await loadState();
+  try { await loadState(); } catch(e) { console.error('loadState:', e); S.msg = 'Hiba: ' + e.message; }
   if (!els || Object.keys(els).length === 0) { renderGame(); return; }
   renderGameUpdate();
 };
@@ -706,6 +756,10 @@ function pick(n) {
 
   if (S.actionPhase === 'select-target') {
     if (c.id === S.actionSource) { updateActionHint('A cél nem lehet azonos a forrással.'); return; }
+    if (!adjacentToSource(n)) {
+      updateActionHint('⛔ Csak a szomszédos vármegyékre mozoghatsz (arannyal jelölve).');
+      return;
+    }
     if (S.actionMode === 'attack') {
       const d = ownerDiplo(c.owner_id);
       if (d === 'coop' || d === 'ally') { alert('Szövetségesre / együttműködőre nem támadhatsz.'); return; }
@@ -769,7 +823,7 @@ function advanceToTarget() {
   S.actionPhase = 'select-target';
   S.hoverTarget = null;
   renderGameUpdate();
-  updateActionHint('Kattints a cél vármegyére (a szaggatott vonal az útvonalat mutatja).');
+  updateActionHint('Kattints egy arannyal jelölt szomszédos vármegyére (a szaggatott vonal az útvonalat mutatja).');
 }
 
 function toggleUnitSelection(unitId) {
@@ -1024,8 +1078,9 @@ function renderPick() {
         const hpPct = Math.round((u.hp_ratio || 1) * 100);
         const training = !isUnitReady(u);
         const myUnit = u.player_id === S.actAs;
+        const owner = S.players.find(x => x.id === u.player_id);
         h += `<div class="row" style="margin:4px 0">
-          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b> <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>
+          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b>${!myUnit ? ` <small style="color:${DIPLO_COLORS[diploStatus(S.actAs, u.player_id)] || '#666'}">(${esc(owner?.nation_name || '?')})</small>` : ''} <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>
           ${myUnit && !training && u.amount > 1 ? `<button class="btn ghost" onclick="splitUnit('${u.id}')">Hasítás</button>` : ''}
         </div>`;
       }
