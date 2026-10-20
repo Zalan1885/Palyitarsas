@@ -1080,18 +1080,30 @@ async function tickMilitary() {
 }
 
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
-
 function pick(n) {
   const c = S.byName[n]; if (!c) return;
 
   if (S.actionPhase === 'select-county') {
-    if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd. Válassz sajátot forrásként.'); return; }
+    /* Csata ellenőrzés előbb */
     if ((S.battles || []).some(b => b.county_id === c.id && b.status === 'active')) {
       updateActionHint('⚔ Ebben a vármegyében csata folyik — innen nem tudsz egységet mozgatni.');
       return;
     }
+    /* Csak akkor engedjük, ha van ott saját mozgatható egység (tulajdonostól függetlenül) */
     const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
-    if (!units.length) { updateActionHint('Ebben a vármegyében nincs mozgatható egységed.'); return; }
+    if (!units.length) {
+      if (c.owner_id !== S.actAs) {
+        const d = ownerDiplo(c.owner_id);
+        if (d === 'ally' || d === 'coop') {
+          updateActionHint('Ezen a szövetséges területen nincs saját mozgatható egységed.');
+        } else {
+          updateActionHint('Ez nem a te vármegyéd, és nincs itt mozgatható egységed.');
+        }
+      } else {
+        updateActionHint('Ebben a vármegyében nincs mozgatható egységed.');
+      }
+      return;
+    }
     S.actionSource = c.id;
     S.actionSourceName = n;
     S.actionPhase = 'select-units';
