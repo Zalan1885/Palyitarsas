@@ -386,6 +386,8 @@ function isUnitReady(u) {
 }
 function diploStatus(a, b) {
   if (!a || !b || a === b) return 'self';
+  /* ÚJ: ha ugyanabban az aktív rendben vannak, mindig társ */
+  if (sameOrder(a, b)) return 'ally';
   const [x, y] = a < b ? [a, b] : [b, a];
   const rec = (S.diplomacy||[]).find(d => d.player_a === x && d.player_b === y);
   return rec?.status || 'neutral';
