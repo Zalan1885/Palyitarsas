@@ -66,12 +66,10 @@
   #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;min-height:52px}
   #action-bar .btn.active{outline:3px solid var(--gold);outline-offset:1px}
   #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px;flex-basis:100%}
-  /* Egységek: alapból nem kattinthatók */
+  /* Egység ikonok: mindig a vármegye fölött, nem kattinthatók */
   .units{pointer-events:none}
-  #map.phase-select-units .units{pointer-events:auto}
-  #map.phase-select-units .county-svg{pointer-events:none}
-  #map.phase-select-units .county-svg .units{pointer-events:auto}
-  .unit-icon{transition:border-color .1s}
+  .unit-chip{display:inline-flex;align-items:center;gap:3px;background:#fff;border:1px solid #ccc;border-radius:8px;padding:4px 8px;cursor:pointer;user-select:none}
+  .unit-chip.on{background:#e8f5e9;border-color:var(--ok)}
   @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
@@ -95,7 +93,7 @@ const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 function diploStatus(a, b) {
@@ -114,6 +112,10 @@ function imgFallback(img) {
   const span = document.createElement('span');
   span.style.cssText = 'display:inline-block;width:10px;height:10px;background:#888;border:1px solid #222;box-sizing:border-box;';
   img.replaceWith(span);
+}
+function getSourceUnits() {
+  if (!S.actionSource) return [];
+  return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
 }
 
 async function boot() {
@@ -325,7 +327,6 @@ async function loadState() {
     const ordm = await sb.from('order_members').select('*').in('order_id', S.orders.map(o => o.id));
     S.orderMembers = ordm.data || [];
   } else S.orderMembers = [];
-  // Clean stale selections
   if (S.selectedUnits.length) {
     const validIds = new Set((S.units||[]).filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now())).map(u => u.id));
     S.selectedUnits = S.selectedUnits.filter(id => validIds.has(id));
@@ -369,14 +370,44 @@ function renderActionBar() {
     <button class="btn ${S.actionMode==='defend'?'active':''}" onclick="startAction('defend')" ${btnDis}>🛡 Védekezés</button>
     <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')" ${btnDis}>→ Mozgatás</button>`;
   if (S.actionMode) {
-    if (S.actionPhase === 'select-units') {
+    if (S.actionPhase === 'select-county') {
       h += `<span class="grow"></span>
-        <span class="chip" style="background:${S.selectedUnits.length ? '#e8f5e9' : ''}">Kiválasztva: ${S.selectedUnits.length} köteg</span>
-        <button class="btn" onclick="advanceToTarget()" ${S.selectedUnits.length === 0 ? 'disabled' : ''}>Cél kiválasztása →</button>
+        <span class="chip" style="background:#fff3cd">Kattints egy saját vármegyére</span>
         <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
+    } else if (S.actionPhase === 'select-units') {
+      const units = getSourceUnits();
+      const srcName = S.actionSourceName || '?';
+      h += `<div style="flex-basis:100%;padding:10px;background:#f8f4e8;border-radius:8px;margin-top:8px">
+        <div class="row"><b>Forrás: ${esc(srcName)}</b>
+          <span class="grow"></span>
+          <span class="chip">Kiválasztva: <b id="unit-sel-count">${S.selectedUnits.length}</b> köteg</span>
+        </div>
+        <div class="row" style="margin-top:8px">`;
+      if (units.length === 0) {
+        h += `<span class="err">Nincs mozgatható egység.</span>`;
+      } else {
+        for (const u of units) {
+          const ut = S.unitTypes.find(x => x.key === u.unit_type);
+          const hpPct = Math.round((u.hp_ratio || 1) * 100);
+          const on = S.selectedUnits.includes(u.id);
+          h += `<label class="unit-chip ${on?'on':''}">
+            <input type="checkbox" id="chk-${u.id}" ${on?'checked':''} onchange="toggleUnitSelection('${u.id}')" style="margin:0">
+            ${u.amount}× ${esc(ut?.name || u.unit_type)} <small style="color:#666">(${hpPct}%)</small>
+          </label>`;
+        }
+      }
+      h += `</div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn ghost" onclick="selectAllUnits()">Összes</button>
+          <button class="btn ghost" onclick="deselectAllUnits()">Egyik sem</button>
+          <span class="grow"></span>
+          <button class="btn" id="unit-go-btn" onclick="advanceToTarget()" ${S.selectedUnits.length === 0 ? 'disabled' : ''}>Cél kiválasztása →</button>
+          <button class="btn ghost" onclick="backToCounty()">← Vissza</button>
+        </div>
+      </div>`;
     } else if (S.actionPhase === 'select-target') {
       h += `<span class="grow"></span>
-        <span class="chip" style="background:#fff3cd">Cél kiválasztása…</span>
+        <span class="chip" style="background:#fff3cd">Cél kiválasztása… (${esc(S.actionSourceName || '?')}, ${S.selectedUnits.length} köteg)</span>
         <button class="btn ghost" onclick="backToUnits()">← Vissza</button>
         <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
     }
@@ -414,11 +445,6 @@ function renderGame() {
 
 function renderGameUpdate() {
   if (!els || Object.keys(els).length === 0) { renderGame(); return; }
-  // diplo classes
-  const mapEl = $('map');
-  if (mapEl) {
-    mapEl.classList.toggle('phase-select-units', S.actionPhase === 'select-units');
-  }
   paintAll();
   renderStatus();
   renderPlayerChips();
@@ -449,17 +475,6 @@ function setZoom(z) {
 function buildMap() {
   els = {};
   const mapEl = $('map');
-  if (mapEl && !mapEl.dataset.listener) {
-    mapEl.dataset.listener = '1';
-    mapEl.addEventListener('click', (e) => {
-      const unitEl = e.target.closest('.unit-icon[data-unit-id]');
-      if (unitEl && S.actionPhase === 'select-units') {
-        e.stopPropagation();
-        e.preventDefault();
-        toggleUnitSelection(unitEl.dataset.unitId);
-      }
-    }, true);
-  }
   Object.keys(POS).forEach(n => {
     const box = document.createElement('div');
     box.className = 'county-svg'; box.style.left = POS[n].left; box.style.top = POS[n].top;
@@ -521,7 +536,6 @@ function renderRoutes() {
   svg.id = 'route-svg';
   svg.setAttribute('width', 1400); svg.setAttribute('height', 1000);
   svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:5;opacity:0.85;';
-  // Pending movements
   for (const m of (S.movements || [])) {
     const fromC = S.counties.find(c => c.id === m.from_county);
     const toC = S.counties.find(c => c.id === m.to_county);
@@ -537,7 +551,6 @@ function renderRoutes() {
     line.setAttribute('stroke-dasharray', '8,4');
     svg.appendChild(line);
   }
-  // Hover preview during select-target
   if (S.actionPhase === 'select-target' && S.hoverTarget && S.actionSource) {
     const srcC = S.counties.find(c => c.id === S.actionSource);
     const tgtC = S.counties.find(c => c.id === S.hoverTarget);
@@ -577,10 +590,8 @@ function paint(n) {
   } else if (DIPLO_COLORS[diplo]) {
     filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   }
-  // Only update if changed (no transition means no flicker anyway)
   if (box.style.filter !== filter) box.style.filter = filter;
 
-  // Building icons
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
     iconBox = document.createElement('div');
@@ -600,12 +611,11 @@ function paint(n) {
     `<img src="${src}" alt="" style="width:14px;height:14px;object-fit:contain;opacity:${inProgress ? '.4' : '1'};filter:drop-shadow(0 1px 1px rgba(0,0,0,.7))">`
   ).join('');
 
-  // Unit icons
   let unitsBox = box.querySelector('.units');
   if (!unitsBox) {
     unitsBox = document.createElement('div');
     unitsBox.className = 'units';
-    unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;';
+    unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;pointer-events:none;';
     box.appendChild(unitsBox);
   }
   const visible = (S.units || []).filter(u => u.county_id === c.id && (
@@ -615,14 +625,11 @@ function paint(n) {
     const isSelected = S.selectedUnits.includes(u.id);
     const bg = isSelf ? '#555' : '#9c27b0';
     const src = UNIT_ICONS[u.unit_type];
-    const training = u.completes_at && new Date(u.completes_at) > Date.now();
-    const clickable = S.actionPhase === 'select-units' && isSelf && !training && u.status === 'ready';
     const icon = src
       ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;" alt="">`
       : `<span style="display:inline-block;width:10px;height:10px;background:${bg};border:1px solid #222;box-sizing:border-box;"></span>`;
     const border = isSelected ? '2px solid gold' : '1px solid transparent';
-    const dataAttr = clickable ? `data-unit-id="${u.id}"` : '';
-    return `<span class="unit-icon${isSelected ? ' selected' : ''}" ${dataAttr} style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;border:${border};${clickable ? 'cursor:pointer;' : ''}">
+    return `<span class="unit-icon" data-uid="${u.id}" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;border:${border};">
       ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${u.amount}</span></span>`;
   }).join('');
   unitsBox.innerHTML = uHtml;
@@ -631,15 +638,6 @@ function paint(n) {
 function paintAll() {
   for (const n of Object.keys(els)) paint(n);
   renderRoutes();
-}
-
-function unitLine(u) {
-  const ut = S.unitTypes.find(x => x.key === u.unit_type);
-  const name = ut?.name || u.unit_type;
-  const hpPct = Math.round((u.hp_ratio || 1) * 100);
-  const done = !u.completes_at || new Date(u.completes_at) <= Date.now();
-  if (!done) return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
-  return `${u.amount}× ${name} <small>(${hpPct}% HP)</small>`;
 }
 
 function info(n) {
@@ -680,10 +678,24 @@ const refreshNow = async () => {
 };
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
 
+/* ---------- Akció fázisok ---------- */
 function pick(n) {
-  if (S.actionPhase === 'select-units') return;
+  const c = S.byName[n]; if (!c) return;
+
+  if (S.actionPhase === 'select-county') {
+    if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd. Válassz sajátot forrásként.'); return; }
+    const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+    if (!units.length) { updateActionHint('Ebben a vármegyében nincs mozgatható egységed.'); return; }
+    S.actionSource = c.id;
+    S.actionSourceName = n;
+    S.actionPhase = 'select-units';
+    S.selectedUnits = units.map(u => u.id);
+    renderGameUpdate();
+    updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".');
+    return;
+  }
+
   if (S.actionPhase === 'select-target') {
-    const c = S.byName[n]; if (!c) return;
     if (c.id === S.actionSource) { updateActionHint('A cél nem lehet azonos a forrással.'); return; }
     if (S.actionMode === 'attack') {
       const d = ownerDiplo(c.owner_id);
@@ -694,6 +706,7 @@ function pick(n) {
     openSendModal(S.actionSource, c.id, S.actionMode);
     return;
   }
+
   clearTimeout(S.pickTimeout);
   S.picked = n;
   renderPick();
@@ -705,54 +718,107 @@ function updateActionHint(t) { const el = $('action-hint'); if (el) el.textConte
 function startAction(mode) {
   if (S.actionMode === mode) { cancelAction(); return; }
   S.actionMode = mode;
-  S.actionPhase = 'select-units';
+  S.actionPhase = 'select-county';
   S.selectedUnits = [];
   S.actionSource = null;
+  S.actionSourceName = null;
   S.actionTarget = null;
   S.hoverTarget = null;
   clearTimeout(S.pickTimeout);
-  const hints = { attack:'⚔ Támadás: kattints a saját egységeidre (1 vármegyéből), majd "Cél kiválasztása".', defend:'🛡 Védekezés: kattints a saját egységeidre, majd "Cél kiválasztása".', move:'→ Mozgatás: kattints a saját egységeidre, majd "Cél kiválasztása".' };
   renderGameUpdate();
+  const hints = { attack:'⚔ Támadás: kattints egy saját vármegyére.', defend:'🛡 Védekezés: kattints egy saját vármegyére.', move:'→ Mozgatás: kattints egy saját vármegyére.' };
   updateActionHint(hints[mode] || '');
 }
 
 function cancelAction() {
   S.actionMode = null; S.actionPhase = null;
-  S.selectedUnits = []; S.actionSource = null; S.actionTarget = null; S.hoverTarget = null;
+  S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null;
   renderGameUpdate();
   updateActionHint('');
 }
 
-function backToUnits() {
-  S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null;
+function backToCounty() {
+  S.actionPhase = 'select-county';
+  S.actionSource = null;
+  S.actionSourceName = null;
+  S.actionTarget = null;
+  S.selectedUnits = [];
   renderGameUpdate();
-  updateActionHint('Válassz egységeket, majd "Cél kiválasztása".');
+  updateActionHint('Kattints egy saját vármegyére.');
+}
+
+function backToUnits() {
+  S.actionPhase = 'select-units';
+  S.actionTarget = null;
+  S.hoverTarget = null;
+  renderGameUpdate();
+  updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".');
 }
 
 function advanceToTarget() {
   if (S.selectedUnits.length === 0) return;
-  const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
-  if (!units.length) return;
-  const sourceCountyId = units[0].county_id;
-  if (!units.every(u => u.county_id === sourceCountyId)) { alert('Az egységek különböző vármegyékben vannak.'); return; }
-  S.actionSource = sourceCountyId;
   S.actionPhase = 'select-target';
+  S.hoverTarget = null;
   renderGameUpdate();
-  updateActionHint('Kattints a cél vármegyére (a vonal mutatja az útvonalat).');
+  updateActionHint('Kattints a cél vármegyére (a szaggatott vonal az útvonalat mutatja).');
 }
 
 function toggleUnitSelection(unitId) {
-  if (!unitId) return;
   const idx = S.selectedUnits.indexOf(unitId);
-  if (idx >= 0) { S.selectedUnits.splice(idx, 1); }
-  else {
-    const unit = (S.units||[]).find(u => u.id === unitId);
-    if (!unit) return;
-    const existing = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
-    if (existing.length > 0 && existing[0].county_id !== unit.county_id) { alert('Csak azonos vármegyéből választhatsz.'); return; }
-    S.selectedUnits.push(unitId);
+  if (idx >= 0) S.selectedUnits.splice(idx, 1);
+  else S.selectedUnits.push(unitId);
+  const cntEl = $('unit-sel-count');
+  if (cntEl) cntEl.textContent = S.selectedUnits.length;
+  const goBtn = $('unit-go-btn');
+  if (goBtn) goBtn.disabled = S.selectedUnits.length === 0;
+  const chip = $('chk-' + unitId)?.closest('.unit-chip');
+  if (chip) chip.classList.toggle('on', S.selectedUnits.includes(unitId));
+  // Update map borders only
+  for (const box of Object.values(els)) {
+    const unitsBox = box.querySelector('.units');
+    if (!unitsBox) continue;
+    for (const el of unitsBox.querySelectorAll('[data-uid]')) {
+      const isSel = S.selectedUnits.includes(el.dataset.uid);
+      el.style.border = isSel ? '2px solid gold' : '1px solid transparent';
+    }
   }
-  renderGameUpdate();
+}
+
+function selectAllUnits() {
+  const units = getSourceUnits();
+  S.selectedUnits = units.map(u => u.id);
+  for (const u of units) {
+    const chk = $('chk-' + u.id);
+    if (chk) { chk.checked = true; chk.closest('.unit-chip')?.classList.add('on'); }
+  }
+  const cntEl = $('unit-sel-count');
+  if (cntEl) cntEl.textContent = S.selectedUnits.length;
+  const goBtn = $('unit-go-btn');
+  if (goBtn) goBtn.disabled = false;
+  for (const box of Object.values(els)) {
+    const unitsBox = box.querySelector('.units');
+    if (!unitsBox) continue;
+    for (const el of unitsBox.querySelectorAll('[data-uid]')) {
+      el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent';
+    }
+  }
+}
+
+function deselectAllUnits() {
+  S.selectedUnits = [];
+  for (const u of getSourceUnits()) {
+    const chk = $('chk-' + u.id);
+    if (chk) { chk.checked = false; chk.closest('.unit-chip')?.classList.remove('on'); }
+  }
+  const cntEl = $('unit-sel-count');
+  if (cntEl) cntEl.textContent = 0;
+  const goBtn = $('unit-go-btn');
+  if (goBtn) goBtn.disabled = true;
+  for (const box of Object.values(els)) {
+    const unitsBox = box.querySelector('.units');
+    if (!unitsBox) continue;
+    for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = '1px solid transparent';
+  }
 }
 
 function sendActionNote(tgtCounty, action) {
@@ -934,7 +1000,6 @@ function renderPick() {
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
     if (countyUnits.length) {
       h += `<hr><b>Katonaság</b>`;
-      // Group by unit_type for merge option
       const myReady = countyUnits.filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
       const groups = {};
       for (const u of myReady) (groups[u.unit_type] = groups[u.unit_type] || []).push(u);
@@ -1001,6 +1066,7 @@ function tick() {
   });
 }
 
+/* Piac */
 async function openMarket() {
   if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('market-backdrop')) return;
@@ -1192,8 +1258,7 @@ function openOrders() {
       <h2>🏰 Vitézi rend</h2>`;
   if (!myMembership) {
     h += `<p>Még nem vagy tagja rendnek.</p>
-      <div class="mitem">
-        <b>Új rend alapítása</b>
+      <div class="mitem"><b>Új rend alapítása</b>
         <div class="row" style="margin-top:6px">
           <input id="order-name" placeholder="Rend neve" maxlength="40" class="grow">
           <button class="btn" onclick="createOrder()">Alapítás</button>
