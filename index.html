@@ -156,8 +156,227 @@ const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null, notifications:[], notifOpen:false, snap:null, _lastActAs:null, _lastSel:null, _notifKey:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
+
+/* ============ ÉRTESÍTÉSEK ============ */
+const NOTIF_MAX = 100;
+function notifKey() { return 'palyi_notifs_' + (S.sel||'') + '_' + (S.actAs||''); }
+function notifLoad() {
+  try {
+    const raw = localStorage.getItem(notifKey());
+    const arr = raw ? JSON.parse(raw) : [];
+    S.notifications = Array.isArray(arr) ? arr : [];
+  } catch(e) { S.notifications = []; }
+}
+function notifSave() {
+  try {
+    S.notifications = S.notifications.slice(0, NOTIF_MAX);
+    localStorage.setItem(notifKey(), JSON.stringify(S.notifications));
+  } catch(e) {}
+}
+function notifPush(type, title, msg) {
+  if (S.demo || !S.actAs) return;
+  S.notifications.unshift({
+    id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    ts: Date.now(), type, title, msg, read: false
+  });
+  notifSave();
+  notifUpdateBadge();
+  if (S.notifOpen) renderNotifModal();
+}
+function notifUpdateBadge() {
+  const badge = $('notif-badge');
+  if (!badge) return;
+  const unread = (S.notifications || []).filter(n => !n.read).length;
+  if (unread === 0 || S.notifOpen) { badge.style.display = 'none'; return; }
+  badge.style.display = 'inline-block';
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+}
+function openNotifs() {
+  if (S.demo || !S.actAs) return;
+  if ($('notif-modal')) return;
+  S.notifOpen = true;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-backdrop" id="notif-modal" onclick="if(event.target===this)closeNotifs()">
+      <div class="modal" style="max-width:640px">
+        <button class="close" onclick="closeNotifs()">✕</button>
+        <h2>🔔 Értesítések</h2>
+        <div class="row" style="margin-bottom:8px">
+          <button class="btn ghost" onclick="markAllNotifsRead()">Összes olvasott</button>
+          <button class="btn ghost" onclick="clearNotifs()">Összes törlése</button>
+        </div>
+        <div id="notif-content"></div>
+      </div>
+    </div>`);
+  renderNotifModal();
+  notifUpdateBadge();
+  setTimeout(() => {
+    if (!S.notifOpen) return;
+    (S.notifications || []).forEach(n => n.read = true);
+    notifSave(); notifUpdateBadge();
+  }, 2000);
+}
+function closeNotifs() {
+  S.notifOpen = false;
+  $('notif-modal')?.remove();
+  (S.notifications || []).forEach(n => n.read = true);
+  notifSave(); notifUpdateBadge();
+}
+function renderNotifModal() {
+  const el = $('notif-content'); if (!el) return;
+  el.innerHTML = renderNotifs();
+}
+function renderNotifs() {
+  if (!S.notifications || !S.notifications.length) {
+    return '<p style="color:var(--muted);text-align:center;padding:20px">Nincs értesítés.</p>';
+  }
+  const now = Date.now();
+  return S.notifications.map(n => {
+    const sec = Math.floor((now - n.ts) / 1000);
+    const timeStr = sec < 60 ? 'most' : sec < 3600 ? Math.floor(sec/60)+'p' : sec < 86400 ? Math.floor(sec/3600)+'ó' : Math.floor(sec/86400)+'n';
+    const bg = n.read ? '' : 'background:#fffbe6;border-color:#f0c000';
+    return `<div class="mitem" style="${bg}">
+      <div class="row"><b class="grow">${esc(n.title)}</b>
+        <small style="color:var(--muted)">${timeStr}</small></div>
+      <div style="font-size:13px">${esc(n.msg)}</div>
+    </div>`;
+  }).join('');
+}
+function markAllNotifsRead() {
+  (S.notifications || []).forEach(n => n.read = true);
+  notifSave(); notifUpdateBadge(); renderNotifModal();
+}
+function clearNotifs() {
+  if (!confirm('Biztosan törlöd az összes értesítést?')) return;
+  S.notifications = [];
+  notifSave(); notifUpdateBadge(); renderNotifModal();
+}
+
+/* --- Detekció: előző vs. új állapot --- */
+function _unitName(k) { return S.unitTypes.find(x => x.key === k)?.name || k; }
+function _countyName(id) { return S.counties.find(c => c.id === id)?.county_definitions.name || '?'; }
+function _nation(id) { return S.players.find(p => p.id === id)?.nation_name || '?'; }
+function _resN(k) { return RES[k] || k; }
+
+function snapOf() {
+  return {
+    units: Object.fromEntries((S.units||[]).map(u => [u.id, { amount:u.amount, status:u.status, hp_ratio:u.hp_ratio, completes_at:u.completes_at, player_id:u.player_id, county_id:u.county_id, unit_type:u.unit_type }])),
+    battles: Object.fromEntries((S.battles||[]).map(b => [b.id, { status:b.status, attacker_id:b.attacker_id, defender_id:b.defender_id, county_id:b.county_id }])),
+    counties: Object.fromEntries((S.counties||[]).map(c => [c.id, { owner_id:c.owner_id, name:c.county_definitions.name }])),
+    offers: Object.fromEntries((S.marketOffers||[]).map(o => [o.id, { status:o.status, bidder_id:o.bidder_id, author_id:o.author_id, give_resource:o.give_resource, give_amount:o.give_amount, get_resource:o.get_resource, get_amount:o.get_amount, listing_id:o.listing_id }])),
+    listings: Object.fromEntries((S.marketListings||[]).map(l => [l.id, { status:l.status, author_id:l.author_id, kind:l.kind, resource:l.resource, amount:l.amount }])),
+    diplomacy: Object.fromEntries((S.diplomacy||[]).map(d => [d.player_a + '|' + d.player_b, { status:d.status, player_a:d.player_a, player_b:d.player_b }])),
+    orderMembers: Object.fromEntries((S.orderMembers||[]).map(m => [m.id, { status:m.status, player_id:m.player_id, order_id:m.order_id }]))
+  };
+}
+function detectNotifications(prev) {
+  if (!prev) return;
+  const me = S.actAs;
+  if (!me) return;
+
+  // 1) Új ajánlat a hirdetésemre
+  for (const o of (S.marketOffers || [])) {
+    if (o.status !== 'pending' || o.author_id !== me || o.bidder_id === me) continue;
+    if (!prev.offers[o.id]) {
+      notifPush('market_offer', '🏪 Új ajánlat',
+        `${_nation(o.bidder_id)} ajánl: ${o.give_amount}× ${_resN(o.give_resource)} ↔ ${o.get_amount}× ${_resN(o.get_resource)}`);
+    }
+  }
+  // 2) Ajánlatom elfogadva/elutasítva
+  for (const o of (S.marketOffers || [])) {
+    if (o.bidder_id !== me) continue;
+    const p = prev.offers[o.id]; if (!p) continue;
+    if (p.status === 'pending' && o.status === 'accepted') {
+      notifPush('market_accept', '✅ Ajánlatodat elfogadták',
+        `Kapsz: ${o.get_amount}× ${_resN(o.get_resource)} · Adsz: ${o.give_amount}× ${_resN(o.give_resource)}`);
+    } else if (p.status === 'pending' && o.status === 'declined') {
+      notifPush('market_decline', '❌ Ajánlatodat elutasították',
+        `Visszakapod: ${o.give_amount}× ${_resN(o.give_resource)}`);
+    }
+  }
+  // 3) Új csata
+  for (const b of (S.battles || [])) {
+    if (b.attacker_id !== me && b.defender_id !== me) continue;
+    if (!prev.battles[b.id]) {
+      if (b.attacker_id === me) {
+        notifPush('battle_start_atk', '⚔ Támadás indult',
+          `Megtámadtad ${_countyName(b.county_id)} vármegyét (${_nation(b.defender_id)})`);
+      } else {
+        notifPush('battle_start_def', '🛡 Támadás ért!',
+          `${_nation(b.attacker_id)} megtámadta ${_countyName(b.county_id)} vármegyédet!`);
+      }
+    }
+  }
+  // 4) Csata vége + egységveszteség
+  for (const bid in prev.battles) {
+    const pb = prev.battles[bid];
+    if (S.battles.some(b => b.id === bid)) continue;
+    const c = S.counties.find(x => x.id === pb.county_id);
+    if (!c) continue;
+    const won = c.owner_id === me;
+    if (pb.attacker_id === me && !won) {
+      notifPush('battle_lost_atk', '❌ Vereség', `Nem sikerült bevenni: ${_countyName(pb.county_id)}`);
+    } else if (pb.defender_id === me && won) {
+      notifPush('battle_won_def', '🛡 Védtél!', `Megtartottad: ${_countyName(pb.county_id)}`);
+    }
+    const myBefore = Object.values(prev.units).filter(u => u.player_id === me && u.county_id === pb.county_id);
+    const myAfter = (S.units || []).filter(u => u.player_id === me && u.county_id === pb.county_id);
+    const lost = myBefore.reduce((s,u) => s+u.amount, 0) - myAfter.reduce((s,u) => s+u.amount, 0);
+    if (lost > 0) {
+      const retreated = (S.movements || []).some(m => m.player_id === me && m.from_county === pb.county_id);
+      if (!retreated) notifPush('unit_loss', '💔 Egységveszteség', `${lost} egység elveszett ${_countyName(pb.county_id)} vármegyében`);
+    }
+  }
+  // 5) Vármegye nyereség/veszteség
+  for (const c of (S.counties || [])) {
+    const p = prev.counties[c.id]; if (!p) continue;
+    const wasMine = p.owner_id === me, isMine = c.owner_id === me;
+    if (!wasMine && isMine) notifPush('county_gain', '🏰 Új vármegye', `Elfoglaltad: ${c.county_definitions.name}`);
+    else if (wasMine && !isMine) {
+      const newOwner = S.players.find(x => x.id === c.owner_id);
+      notifPush('county_lost', '⚠ Vármegye elveszett',
+        `${c.county_definitions.name}${newOwner ? ' → ' + newOwner.nation_name : ''}`);
+    }
+  }
+  // 6) Kiképzés kész
+  for (const u of (S.units || [])) {
+    if (u.player_id !== me) continue;
+    const p = prev.units[u.id]; if (!p) continue;
+    if (p.status === 'training' && u.status === 'ready') {
+      notifPush('recruit_done', '👥 Kiképzés kész', `${u.amount}× ${_unitName(u.unit_type)} kész`);
+    }
+  }
+  // 7) Diplomácia változás
+  for (const d of (S.diplomacy || [])) {
+    if (d.player_a !== me && d.player_b !== me) continue;
+    const p = prev.diplomacy[d.player_a + '|' + d.player_b];
+    if (p && p.status !== d.status) {
+      const other = d.player_a === me ? d.player_b : d.player_a;
+      notifPush('diplo_change', '📜 Diplomácia', `${_nation(other)}: ${DIPLO_NAMES[d.status] || d.status}`);
+    }
+  }
+  // 8) Rend - új jelentkezés
+  const myMembership = (S.orderMembers || []).find(m => m.player_id === me && m.status === 'active');
+  if (myMembership) {
+    const myOrder = (S.orders || []).find(o => o.id === myMembership.order_id);
+    if (myOrder && myOrder.founder_id === me) {
+      for (const m of (S.orderMembers || [])) {
+        if (m.order_id !== myMembership.order_id || m.status !== 'pending') continue;
+        if (!prev.orderMembers[m.id]) notifPush('order_apply', '🏰 Új jelentkezés', `${_nation(m.player_id)} jelentkezett a rendbe`);
+      }
+    }
+  }
+  // 9) Rend - engem felvettek
+  for (const m of (S.orderMembers || [])) {
+    if (m.player_id !== me) continue;
+    const p = prev.orderMembers[m.id]; if (!p) continue;
+    if (p.status === 'pending' && m.status === 'active') {
+      const o = (S.orders || []).find(x => x.id === m.order_id);
+      notifPush('order_accept', '🏰 Rend', `Felvettek a(z) ${o?.name || '?'} rendbe`);
+    }
+  }
+}
 
 function isUnitReady(u) {
   if (!u) return false;
@@ -186,8 +405,6 @@ function getSourceUnits() {
   if (!S.actionSource) return [];
   return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
 }
-
-/* === ADJ alapú szomszédság === */
 function isAdjacentByName(a, b) {
   if (!a || !b) return false;
   return (ADJ[a]?.has(b)) || (ADJ[b]?.has(a)) || false;
@@ -197,6 +414,14 @@ function adjacentToSource(countyName) {
   const srcC = S.counties.find(c => c.id === S.actionSource);
   if (!srcC) return false;
   return isAdjacentByName(srcC.county_definitions.name, countyName);
+}
+function visibleMovements() {
+  return (S.movements || []).filter(m =>
+    m.status === 'marching' &&
+    (m.player_id === S.actAs || diploStatus(S.actAs, m.player_id) === 'ally'));
+}
+function incomingTo(countyId) {
+  return visibleMovements().filter(m => m.to_county === countyId);
 }
 
 async function boot() {
@@ -313,6 +538,7 @@ async function changePw() {
 }
 const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.demo ? '<span class="chip" style="color:var(--ink)">DEMÓ</span>' : ''}
   <span>${esc(S.profile.username)}</span>${S.profile.is_admin ? '<span class="chip" style="color:var(--ink)">admin</span>' : ''}
+  ${(!S.demo && S.sel && S.actAs) ? '<button onclick="openNotifs()" id="notif-btn" style="position:relative">🔔<span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#d00000;color:#fff;border-radius:999px;font-size:11px;padding:1px 5px;min-width:16px;text-align:center;font-weight:700"></span></button>' : ''}
   ${S.demo ? '' : '<button onclick="renderAccount()">Jelszó</button>'}<button onclick="logout()">Kilépés</button></header>`;
 
 function demoStart() {
@@ -375,6 +601,9 @@ async function doJoin() {
 
 async function loadState() {
   if (S.demo) return;
+  const _prevSnap = S.snap;
+  const _prevActAs = S._lastActAs;
+  const _prevSel = S._lastSel;
   const [p, c] = await Promise.all([
     sb.from('game_players').select('id,office,nation_name,color,profile_id').eq('game_id', S.sel),
     sb.from('counties').select('id,owner_id,definition_id').eq('game_id', S.sel)]);
@@ -418,6 +647,16 @@ async function loadState() {
     buildings:(b.data || []).filter(y => y.county_id === x.id) }));
   if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket.';
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
+
+  /* Értesítés-hook: csak akkor, ha ugyanaz a játék + ugyanaz a játékos, mint előbb */
+  const _notifKeyNow = 'palyi_notifs_' + (S.sel||'') + '_' + (S.actAs||'');
+  if (S._notifKey !== _notifKeyNow) { S._notifKey = _notifKeyNow; notifLoad(); }
+  if (_prevSnap && _prevActAs === S.actAs && _prevSel === S.sel) {
+    try { detectNotifications(_prevSnap); } catch(e) { console.warn('detect:', e); }
+  }
+  S.snap = snapOf();
+  S._lastActAs = S.actAs;
+  S._lastSel = S.sel;
 }
 async function openGame(id) {
   S.sel = id; Z = null;
@@ -533,6 +772,7 @@ function renderGameUpdate() {
   renderPlayerChips();
   if (S.picked) renderPick(); else { const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }
   const ab = $('action-bar'); if (ab) ab.innerHTML = renderActionBar();
+  notifUpdateBadge();
 }
 
 function renderPlayerChips() {
@@ -619,7 +859,7 @@ function renderRoutes() {
   svg.id = 'route-svg';
   svg.setAttribute('width', 1400); svg.setAttribute('height', 1000);
   svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:5;opacity:0.85;';
-  for (const m of (S.movements || [])) {
+  for (const m of visibleMovements()) {
     const fromC = S.counties.find(c => c.id === m.from_county);
     const toC = S.counties.find(c => c.id === m.to_county);
     if (!fromC || !toC) continue;
@@ -713,8 +953,7 @@ function paint(n) {
   }
   const visible = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
-  const marching = (S.movements || []).filter(m =>
-    m.player_id === S.actAs && m.to_county === c.id && m.status === 'marching');
+  const marching = incomingTo(c.id);
 
   const visibleHtml = visible.map(u => {
     const isSelf = u.player_id === S.actAs;
@@ -734,7 +973,7 @@ function paint(n) {
     const icon = src
       ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;opacity:.5" alt="">`
       : `<span style="display:inline-block;width:10px;height:10px;background:#888;border:1px dashed #ff9800;box-sizing:border-box;"></span>`;
-    return `<span class="unit-icon marching" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.4);border-radius:3px;padding:0 2px;border:1px dashed #ff9800;">
+    return `<span class="unit-icon marching" title="Közeledik" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.4);border-radius:3px;padding:0 2px;border:1px dashed #ff9800;">
       ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${m.amount}</span></span>`;
   }).join('');
 
@@ -751,7 +990,6 @@ function info(n) {
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
 
-  /* Csak a saját és rendtárs egységek */
   const units = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const unitsByPlayer = {};
@@ -774,6 +1012,16 @@ function info(n) {
     unitStr = ' –';
   }
 
+  const incoming = incomingTo(c.id);
+  let incomingStr = '';
+  if (incoming.length) {
+    incomingStr = '<br><small style="color:#b26a00">→ Közeledik: ' + incoming.map(m => {
+      const ut = S.unitTypes.find(x => x.key === m.unit_type);
+      const eta = (new Date(m.arrive_at) - Date.now()) / 1000;
+      return `${m.amount}× ${ut?.name || m.unit_type} (${fmtT(eta)})`;
+    }).join(', ') + '</small>';
+  }
+
   const battleHere = (S.battles || []).find(x => x.county_id === c.id && x.status === 'active');
   const battleStr = battleHere ? `<br><b style="color:#b00020">⚔ CSATA FOLYIK</b>` : '';
 
@@ -788,7 +1036,7 @@ function info(n) {
     Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>
     Egyéb: ${esc(d.features.join(', ')) || '–'}<br>
     Épületek: ${esc(b)}<br>
-    Katonaság:${unitStr}${battleStr}`;
+    Katonaság:${unitStr}${incomingStr}${battleStr}`;
 }
 function tip(n, e) { const t = $('tooltip'); t.innerHTML = info(n); t.style.display = 'block'; moveTip(e); }
 function moveTip(e) { const t = $('tooltip'); t.style.left = e.pageX + 12 + 'px'; t.style.top = e.pageY + 12 + 'px'; }
@@ -814,8 +1062,8 @@ let tickMilitaryCounter = 0;
 async function tickMilitary() {
   if (tickMilitaryRunning) return;
   if (!S.sel || S.demo) return;
-  const hasMarching = (S.movements || []).some(m => m.status === 'marching');
-  if (!hasMarching) return;
+  const hasPending = (S.movements || []).length > 0 || (S.battles || []).length > 0;
+  if (!hasPending) return;
   tickMilitaryRunning = true;
   try { await sb.rpc('tick_military', {p_game:S.sel}); } catch(e){ console.warn('tick_military:', e.message); }
   try { await loadState(); } catch(e) { console.error('loadState:', e); }
@@ -830,6 +1078,10 @@ function pick(n) {
 
   if (S.actionPhase === 'select-county') {
     if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd. Válassz sajátot forrásként.'); return; }
+    if ((S.battles || []).some(b => b.county_id === c.id && b.status === 'active')) {
+      updateActionHint('⚔ Ebben a vármegyében csata folyik — innen nem tudsz egységet mozgatni.');
+      return;
+    }
     const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
     if (!units.length) { updateActionHint('Ebben a vármegyében nincs mozgatható egységed.'); return; }
     S.actionSource = c.id;
@@ -1031,7 +1283,15 @@ async function confirmSend(action) {
   let ok = 0, errs = [];
   for (const s of sends) {
     const { error } = await sb.rpc('send_army', { p_unit_id: s.id, p_to_county: tgt, p_amount: s.amount, p_action: action === 'attack' ? 'attack' : 'move', p_player: S.actAs });
-    if (error) errs.push(error.message); else ok++;
+    if (error) {
+      if (/Nem szomszédos/i.test(error.message)) {
+        errs.push('A szerver még a régi (pixel-alapú) szomszédság-ellenőrzést használja. Futtasd a 013_adjacency.sql-t a Supabase-ben!');
+      } else if (/Csata folyik a forrásban/i.test(error.message)) {
+        errs.push('Csata folyik a forrásban — előbb visszavonulás vagy várd meg a csata végét.');
+      } else {
+        errs.push(error.message);
+      }
+    } else ok++;
   }
   closeSendModal();
   if (errs.length) alert('Hibák:\n' + errs.join('\n'));
@@ -1097,6 +1357,16 @@ function renderPick() {
       ${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id)
         ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>` : ''}
     </div>`;
+  }
+
+  const incoming = incomingTo(c.id);
+  if (incoming.length) {
+    h += `<hr><b style="color:#b26a00">→ Közeledő egységek</b>`;
+    for (const m of incoming) {
+      const ut = S.unitTypes.find(x => x.key === m.unit_type);
+      const fromC = S.counties.find(x => x.id === m.from_county);
+      h += `<div style="font-size:13px;color:var(--muted)">${m.amount}× ${esc(ut?.name || m.unit_type)} innen: ${esc(fromC?.county_definitions.name || '?')} · megérkezik: <span data-end="${m.arrive_at}">…</span>${m.action === 'attack' ? ' <b style="color:#b00020">[támadás]</b>' : ''}</div>`;
+    }
   }
 
   const adm = S.profile.is_admin, mine = c.owner_id && (adm || c.owner_id === S.actAs);
