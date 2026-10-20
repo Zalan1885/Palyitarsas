@@ -78,6 +78,70 @@
 
 <script>
 const POS = {"Fiume - város": {"left": "1.5px", "top": "380.5px"}, "Modrus-Fiume": {"left": "1.5px", "top": "360.5px"}, "Lika-Krbava": {"left": "30.5px", "top": "415.5px"}, "Zágráb": {"left": "60.5px", "top": "329.5px"}, "Varasd": {"left": "84.5px", "top": "298.5px"}, "Belovár-Kőrós": {"left": "127.5px", "top": "317.5px"}, "Pozsega": {"left": "154.5px", "top": "366.5px"}, "Verőcze": {"left": "187.5px", "top": "342.5px"}, "Szerém": {"left": "261px", "top": "391.5px"}, "Baranya": {"left": "222.5px", "top": "303.5px"}, "Tolna": {"left": "239.5px", "top": "258.5px"}, "Somogy": {"left": "165.5px", "top": "255.5px"}, "Zala": {"left": "122.5px", "top": "232.5px"}, "Vas": {"left": "111.5px", "top": "194px"}, "Veszprém": {"left": "188.5px", "top": "193.5px"}, "Fejér": {"left": "244.5px", "top": "194.5px"}, "Komárom": {"left": "220.5px", "top": "147.5px"}, "Esztergom": {"left": "264.5px", "top": "149.5px"}, "Győr": {"left": "197.5px", "top": "161.5px"}, "Sopron": {"left": "131.5px", "top": "152.5px"}, "Moson": {"left": "160px", "top": "136.5px"}, "Pozsony": {"left": "171.5px", "top": "89.5px"}, "Nyitra": {"left": "180.5px", "top": "60.5px"}, "Bars": {"left": "257.5px", "top": "79.5px"}, "Hont": {"left": "283.5px", "top": "105.5px"}, "Zólyom": {"left": "300.96px", "top": "64.5px"}, "Trencsén": {"left": "223.5px", "top": "9.5px"}, "Árva": {"left": "310.5px", "top": "1.5px"}, "Liptó": {"left": "310.5px", "top": "34.5px"}, "Szepes": {"left": "367px", "top": "15.5px"}, "Sáros": {"left": "408px", "top": "16.5px"}, "Zemplén": {"left": "423px", "top": "22.5px"}, "Ung": {"left": "478.5px", "top": "48px"}, "Bereg": {"left": "500px", "top": "64.5px"}, "Szatmár": {"left": "495.5px", "top": "136.5px"}, "Szabolcs": {"left": "428.5px", "top": "112.5px"}, "Hajdú": {"left": "413.5px", "top": "158.5px"}, "Nógrád": {"left": "301.5px", "top": "92px"}, "Borsod": {"left": "368.5px", "top": "107.86px"}, "Heves": {"left": "342.5px", "top": "139.5px"}, "Jász-Nagykun-Szolnok": {"left": "344.5px", "top": "185.5px"}, "Pest-Pilis-Solt-Kiskun": {"left": "282.5px", "top": "167px"}, "Csongrád": {"left": "343.5px", "top": "266px"}, "Csanád": {"left": "387.5px", "top": "287.5px"}, "Békés": {"left": "387px", "top": "229.5px"}, "Bács-Bodrog": {"left": "292.5px", "top": "306.5px"}, "Torontál": {"left": "368.5px", "top": "318.5px"}, "Temes": {"left": "417.5px", "top": "325.5px"}, "Hunyad": {"left": "516.5px", "top": "305px"}, "Arad": {"left": "418.5px", "top": "273px"}, "Bihar": {"left": "430.92px", "top": "191.5px"}, "Szilágy": {"left": "508.5px", "top": "185px"}, "Szolnok-Doboka": {"left": "571.5px", "top": "179.5px"}, "Máramaros": {"left": "559.5px", "top": "78.5px"}, "Beszterce-Naszód": {"left": "626px", "top": "181px"}, "Kolozs": {"left": "531px", "top": "233px"}, "Torda-Aranyos": {"left": "533.5px", "top": "268px"}, "Alsó-Fehér": {"left": "550.5px", "top": "291px"}, "Szeben": {"left": "585.5px", "top": "332px"}, "Fogaras": {"left": "647px", "top": "331.5px"}, "Kis-Küküllő": {"left": "610.5px", "top": "286.5px"}, "Udvarhely": {"left": "665.5px", "top": "269.5px"}, "Háromszék": {"left": "715px", "top": "300.5px"}, "Csík": {"left": "694px", "top": "220px"}, "Maros-Torda": {"left": "628.5px", "top": "225.5px"}, "Budapest": {"left": "299.5px", "top": "192px"}, "Ugocsa": {"left": "537px", "top": "121.5px"}, "Krassó-Szőrény": {"left": "453.5px", "top": "331.5px"}, "Gömör-és-Kis-Hont": {"left": "350.5px", "top": "65px"}, "Abaúj-Torna": {"left": "395px", "top": "75.5px"}, "Túrócz": {"left": "283.5px", "top": "41.5px"}, "Nagy-Küküllő": {"left": "620.5px", "top": "305px"}, "Brassó": {"left": "703px", "top": "322px"}};
+
+const ADJ_PAIRS = [
+  ["Fiume - város","Modrus-Fiume"],["Modrus-Fiume","Lika-Krbava"],["Modrus-Fiume","Zágráb"],
+  ["Lika-Krbava","Zágráb"],["Zágráb","Varasd"],["Zágráb","Belovár-Kőrós"],["Zágráb","Pozsega"],
+  ["Varasd","Belovár-Kőrós"],["Belovár-Kőrós","Pozsega"],["Belovár-Kőrós","Zala"],
+  ["Pozsega","Verőcze"],["Pozsega","Szerém"],["Verőcze","Szerém"],["Verőcze","Bács-Bodrog"],
+  ["Verőcze","Baranya"],["Szerém","Bács-Bodrog"],["Szerém","Baranya"],
+  ["Baranya","Somogy"],["Baranya","Tolna"],["Baranya","Bács-Bodrog"],
+  ["Tolna","Fejér"],["Tolna","Veszprém"],["Tolna","Somogy"],["Tolna","Bács-Bodrog"],["Tolna","Pest-Pilis-Solt-Kiskun"],
+  ["Somogy","Zala"],["Somogy","Veszprém"],["Somogy","Fejér"],
+  ["Zala","Vas"],["Zala","Veszprém"],["Vas","Sopron"],["Vas","Veszprém"],
+  ["Veszprém","Sopron"],["Veszprém","Győr"],["Veszprém","Komárom"],["Veszprém","Fejér"],
+  ["Fejér","Komárom"],["Fejér","Pest-Pilis-Solt-Kiskun"],
+  ["Komárom","Győr"],["Komárom","Pozsony"],["Komárom","Bars"],["Komárom","Esztergom"],["Komárom","Pest-Pilis-Solt-Kiskun"],
+  ["Esztergom","Bars"],["Esztergom","Hont"],["Esztergom","Pest-Pilis-Solt-Kiskun"],
+  ["Győr","Moson"],["Győr","Pozsony"],["Győr","Sopron"],
+  ["Sopron","Moson"],["Moson","Pozsony"],
+  ["Pozsony","Nyitra"],["Pozsony","Trencsén"],["Nyitra","Trencsén"],["Nyitra","Túrócz"],["Nyitra","Bars"],
+  ["Bars","Túrócz"],["Bars","Zólyom"],["Bars","Hont"],["Bars","Trencsén"],
+  ["Hont","Zólyom"],["Hont","Gömör-és-Kis-Hont"],["Hont","Nógrád"],["Hont","Pest-Pilis-Solt-Kiskun"],
+  ["Zólyom","Liptó"],["Zólyom","Túrócz"],["Zólyom","Gömör-és-Kis-Hont"],
+  ["Trencsén","Árva"],["Trencsén","Túrócz"],["Árva","Liptó"],["Árva","Túrócz"],
+  ["Liptó","Túrócz"],["Liptó","Gömör-és-Kis-Hont"],["Liptó","Szepes"],
+  ["Szepes","Gömör-és-Kis-Hont"],["Szepes","Sáros"],
+  ["Sáros","Abaúj-Torna"],["Sáros","Zemplén"],["Sáros","Ung"],
+  ["Zemplén","Abaúj-Torna"],["Zemplén","Borsod"],["Zemplén","Szabolcs"],["Zemplén","Ung"],
+  ["Ung","Szabolcs"],["Ung","Bereg"],
+  ["Bereg","Szabolcs"],["Bereg","Szatmár"],["Bereg","Ugocsa"],["Bereg","Máramaros"],
+  ["Szatmár","Szabolcs"],["Szatmár","Ugocsa"],["Szatmár","Máramaros"],["Szatmár","Szilágy"],["Szatmár","Bihar"],
+  ["Szabolcs","Borsod"],["Szabolcs","Hajdú"],
+  ["Hajdú","Borsod"],["Hajdú","Heves"],["Hajdú","Jász-Nagykun-Szolnok"],["Hajdú","Békés"],["Hajdú","Bihar"],
+  ["Nógrád","Gömör-és-Kis-Hont"],["Nógrád","Borsod"],["Nógrád","Heves"],["Nógrád","Pest-Pilis-Solt-Kiskun"],
+  ["Borsod","Gömör-és-Kis-Hont"],["Borsod","Heves"],["Borsod","Abaúj-Torna"],
+  ["Heves","Gömör-és-Kis-Hont"],["Heves","Jász-Nagykun-Szolnok"],["Heves","Pest-Pilis-Solt-Kiskun"],
+  ["Jász-Nagykun-Szolnok","Pest-Pilis-Solt-Kiskun"],["Jász-Nagykun-Szolnok","Békés"],
+  ["Jász-Nagykun-Szolnok","Csongrád"],["Jász-Nagykun-Szolnok","Bács-Bodrog"],
+  ["Pest-Pilis-Solt-Kiskun","Bács-Bodrog"],["Pest-Pilis-Solt-Kiskun","Budapest"],
+  ["Csongrád","Békés"],["Csongrád","Csanád"],["Csongrád","Torontál"],["Csongrád","Bács-Bodrog"],
+  ["Csanád","Békés"],["Csanád","Arad"],["Csanád","Torontál"],["Csanád","Temes"],
+  ["Békés","Bihar"],["Békés","Arad"],["Bács-Bodrog","Torontál"],
+  ["Torontál","Arad"],["Torontál","Temes"],["Temes","Arad"],["Temes","Hunyad"],["Temes","Krassó-Szőrény"],
+  ["Hunyad","Arad"],["Hunyad","Krassó-Szőrény"],["Hunyad","Szeben"],["Hunyad","Alsó-Fehér"],["Hunyad","Torda-Aranyos"],
+  ["Arad","Bihar"],["Arad","Krassó-Szőrény"],["Arad","Torda-Aranyos"],
+  ["Bihar","Szilágy"],["Bihar","Kolozs"],["Bihar","Torda-Aranyos"],
+  ["Szilágy","Kolozs"],["Szilágy","Szolnok-Doboka"],
+  ["Szolnok-Doboka","Bihar"],["Szolnok-Doboka","Kolozs"],["Szolnok-Doboka","Beszterce-Naszód"],["Szolnok-Doboka","Máramaros"],
+  ["Máramaros","Ugocsa"],["Máramaros","Beszterce-Naszód"],
+  ["Beszterce-Naszód","Maros-Torda"],["Beszterce-Naszód","Kolozs"],
+  ["Kolozs","Maros-Torda"],["Kolozs","Torda-Aranyos"],["Kolozs","Alsó-Fehér"],
+  ["Torda-Aranyos","Alsó-Fehér"],["Torda-Aranyos","Maros-Torda"],["Torda-Aranyos","Kis-Küküllő"],
+  ["Alsó-Fehér","Szeben"],["Alsó-Fehér","Nagy-Küküllő"],["Alsó-Fehér","Kis-Küküllő"],
+  ["Szeben","Nagy-Küküllő"],["Szeben","Fogaras"],["Fogaras","Nagy-Küküllő"],["Fogaras","Brassó"],
+  ["Kis-Küküllő","Nagy-Küküllő"],["Kis-Küküllő","Udvarhely"],["Kis-Küküllő","Maros-Torda"],
+  ["Udvarhely","Maros-Torda"],["Udvarhely","Csík"],["Udvarhely","Háromszék"],["Udvarhely","Nagy-Küküllő"],
+  ["Háromszék","Csík"],["Háromszék","Nagy-Küküllő"],["Háromszék","Brassó"],
+  ["Csík","Maros-Torda"],
+  ["Gömör-és-Kis-Hont","Abaúj-Torna"],["Abaúj-Torna","Borsod"]
+];
+const ADJ = {};
+for (const [a, b] of ADJ_PAIRS) {
+  (ADJ[a] = ADJ[a] || new Set()).add(b);
+  (ADJ[b] = ADJ[b] || new Set()).add(a);
+}
+
 const EMAIL_DOMAIN = 'jatek.local';
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
@@ -122,16 +186,11 @@ function getSourceUnits() {
   if (!S.actionSource) return [];
   return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
 }
-function parsePOS(name) {
-  const p = POS[name];
-  if (!p) return null;
-  return { x: parseFloat(p.left) || 0, y: parseFloat(p.top) || 0 };
-}
+
+/* === ADJ alapú szomszédság === */
 function isAdjacentByName(a, b) {
-  const pa = parsePOS(a), pb = parsePOS(b);
-  if (!pa || !pb) return false;
-  const dx = pa.x - pb.x, dy = pa.y - pb.y;
-  return dx*dx + dy*dy < 4225;
+  if (!a || !b) return false;
+  return (ADJ[a]?.has(b)) || (ADJ[b]?.has(a)) || false;
 }
 function adjacentToSource(countyName) {
   if (!S.actionSource) return false;
@@ -652,12 +711,8 @@ function paint(n) {
     unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;pointer-events:none;';
     box.appendChild(unitsBox);
   }
-
-  /* Csak a saját + rendtárs egységek */
   const visible = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
-
-  /* Marching egységek a cél vármegyében */
   const marching = (S.movements || []).filter(m =>
     m.player_id === S.actAs && m.to_county === c.id && m.status === 'marching');
 
@@ -696,7 +751,7 @@ function info(n) {
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
 
-  /* Csak a saját és rendtárs (ally) egységek */
+  /* Csak a saját és rendtárs egységek */
   const units = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const unitsByPlayer = {};
@@ -1091,7 +1146,6 @@ function renderPick() {
       }).join('');
     }
 
-    /* Katonaság: csak a saját + rendtárs egységek */
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id && (
       u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
     if (countyUnits.length) {
