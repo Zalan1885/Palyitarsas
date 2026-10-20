@@ -50,8 +50,7 @@
   .office.sel{border-color:var(--accent);background:#fbf1e3}.office.off{opacity:.45;cursor:not-allowed}
   #wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#e9e1cf;height:58vh}
   #map{position:relative;width:1400px;height:1000px;transform-origin:0 0}
-  .county-svg{position:absolute;transition:filter .2s}
-  .county-svg:hover{transform:scale(1.04);cursor:pointer;z-index:5}
+  .county-svg{position:absolute;cursor:pointer}
   #tooltip{position:absolute;background:#2a2119;color:#fff;padding:8px 12px;border-radius:8px;display:none;z-index:1000;font-size:13px;line-height:1.45;max-width:320px;pointer-events:none}
   .zoom{position:sticky;float:right;top:8px;right:8px;margin:8px;z-index:20;display:flex;gap:4px}
   .zoom button{padding:4px 10px}
@@ -64,9 +63,15 @@
   .modal-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
   .mitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fff}
   .mitem .row{margin:4px 0;flex-wrap:wrap}
-  #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  #action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;min-height:52px}
   #action-bar .btn.active{outline:3px solid var(--gold);outline-offset:1px}
-  #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px}
+  #action-hint{margin-left:8px;color:var(--muted);font-size:13px;min-height:18px;flex-basis:100%}
+  /* Egységek: alapból nem kattinthatók */
+  .units{pointer-events:none}
+  #map.phase-select-units .units{pointer-events:auto}
+  #map.phase-select-units .county-svg{pointer-events:none}
+  #map.phase-select-units .county-svg .units{pointer-events:auto}
+  .unit-icon{transition:border-color .1s}
   @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
@@ -76,29 +81,23 @@
 
 <script>
 const POS = {"Fiume - város": {"left": "1.5px", "top": "380.5px"}, "Modrus-Fiume": {"left": "1.5px", "top": "360.5px"}, "Lika-Krbava": {"left": "30.5px", "top": "415.5px"}, "Zágráb": {"left": "60.5px", "top": "329.5px"}, "Varasd": {"left": "84.5px", "top": "298.5px"}, "Belovár-Kőrós": {"left": "127.5px", "top": "317.5px"}, "Pozsega": {"left": "154.5px", "top": "366.5px"}, "Verőcze": {"left": "187.5px", "top": "342.5px"}, "Szerém": {"left": "261px", "top": "391.5px"}, "Baranya": {"left": "222.5px", "top": "303.5px"}, "Tolna": {"left": "239.5px", "top": "258.5px"}, "Somogy": {"left": "165.5px", "top": "255.5px"}, "Zala": {"left": "122.5px", "top": "232.5px"}, "Vas": {"left": "111.5px", "top": "194px"}, "Veszprém": {"left": "188.5px", "top": "193.5px"}, "Fejér": {"left": "244.5px", "top": "194.5px"}, "Komárom": {"left": "220.5px", "top": "147.5px"}, "Esztergom": {"left": "264.5px", "top": "149.5px"}, "Győr": {"left": "197.5px", "top": "161.5px"}, "Sopron": {"left": "131.5px", "top": "152.5px"}, "Moson": {"left": "160px", "top": "136.5px"}, "Pozsony": {"left": "171.5px", "top": "89.5px"}, "Nyitra": {"left": "180.5px", "top": "60.5px"}, "Bars": {"left": "257.5px", "top": "79.5px"}, "Hont": {"left": "283.5px", "top": "105.5px"}, "Zólyom": {"left": "300.96px", "top": "64.5px"}, "Trencsén": {"left": "223.5px", "top": "9.5px"}, "Árva": {"left": "310.5px", "top": "1.5px"}, "Liptó": {"left": "310.5px", "top": "34.5px"}, "Szepes": {"left": "367px", "top": "15.5px"}, "Sáros": {"left": "408px", "top": "16.5px"}, "Zemplén": {"left": "423px", "top": "22.5px"}, "Ung": {"left": "478.5px", "top": "48px"}, "Bereg": {"left": "500px", "top": "64.5px"}, "Szatmár": {"left": "495.5px", "top": "136.5px"}, "Szabolcs": {"left": "428.5px", "top": "112.5px"}, "Hajdú": {"left": "413.5px", "top": "158.5px"}, "Nógrád": {"left": "301.5px", "top": "92px"}, "Borsod": {"left": "368.5px", "top": "107.86px"}, "Heves": {"left": "342.5px", "top": "139.5px"}, "Jász-Nagykun-Szolnok": {"left": "344.5px", "top": "185.5px"}, "Pest-Pilis-Solt-Kiskun": {"left": "282.5px", "top": "167px"}, "Csongrád": {"left": "343.5px", "top": "266px"}, "Csanád": {"left": "387.5px", "top": "287.5px"}, "Békés": {"left": "387px", "top": "229.5px"}, "Bács-Bodrog": {"left": "292.5px", "top": "306.5px"}, "Torontál": {"left": "368.5px", "top": "318.5px"}, "Temes": {"left": "417.5px", "top": "325.5px"}, "Hunyad": {"left": "516.5px", "top": "305px"}, "Arad": {"left": "418.5px", "top": "273px"}, "Bihar": {"left": "430.92px", "top": "191.5px"}, "Szilágy": {"left": "508.5px", "top": "185px"}, "Szolnok-Doboka": {"left": "571.5px", "top": "179.5px"}, "Máramaros": {"left": "559.5px", "top": "78.5px"}, "Beszterce-Naszód": {"left": "626px", "top": "181px"}, "Kolozs": {"left": "531px", "top": "233px"}, "Torda-Aranyos": {"left": "533.5px", "top": "268px"}, "Alsó-Fehér": {"left": "550.5px", "top": "291px"}, "Szeben": {"left": "585.5px", "top": "332px"}, "Fogaras": {"left": "647px", "top": "331.5px"}, "Kis-Küküllő": {"left": "610.5px", "top": "286.5px"}, "Udvarhely": {"left": "665.5px", "top": "269.5px"}, "Háromszék": {"left": "715px", "top": "300.5px"}, "Csík": {"left": "694px", "top": "220px"}, "Maros-Torda": {"left": "628.5px", "top": "225.5px"}, "Budapest": {"left": "299.5px", "top": "192px"}, "Ugocsa": {"left": "537px", "top": "121.5px"}, "Krassó-Szőrény": {"left": "453.5px", "top": "331.5px"}, "Gömör-és-Kis-Hont": {"left": "350.5px", "top": "65px"}, "Abaúj-Torna": {"left": "395px", "top": "75.5px"}, "Túrócz": {"left": "283.5px", "top": "41.5px"}, "Nagy-Küküllő": {"left": "620.5px", "top": "305px"}, "Brassó": {"left": "703px", "top": "322px"}};
-const DEMO = {"counties": {"Fiume - város": {"r": [], "f": ["kikötő"]}, "Modrus-Fiume": {"r": [], "f": ["élelmiszeripar", "gépgyártás", "kikötő"]}, "Lika-Krbava": {"r": ["wood"], "f": ["kikötő"]}, "Zágráb": {"r": [], "f": ["könnyűipar", "élelmiszeripar"]}, "Varasd": {"r": ["wine", "wood", "coal"], "f": []}, "Belovár-Kőrós": {"r": ["wine", "wood", "corn"], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Pozsega": {"r": ["wood", "wheat", "corn"], "f": []}, "Verőcze": {"r": ["wood", "wheat"], "f": []}, "Szerém": {"r": ["wine", "wood", "wheat"], "f": []}, "Baranya": {"r": ["wine", "coal"], "f": ["könnyűipar", "vas-és fémipar", "egyetem"]}, "Tolna": {"r": ["wine"], "f": []}, "Somogy": {"r": ["wine", "sugar", "livestock"], "f": []}, "Zala": {"r": ["wine"], "f": []}, "Vas": {"r": ["sugar", "iron_ore"], "f": ["gépgyártás"]}, "Veszprém": {"r": ["wine", "corn"], "f": []}, "Fejér": {"r": ["wheat", "livestock"], "f": ["gépgyártás"]}, "Komárom": {"r": ["wine", "coal"], "f": []}, "Esztergom": {"r": ["coal"], "f": []}, "Győr": {"r": [], "f": ["gépgyártás"]}, "Sopron": {"r": ["sugar"], "f": []}, "Moson": {"r": ["wheat"], "f": ["gépgyártás"]}, "Pozsony": {"r": ["sugar"], "f": ["könnyűipar", "egyetem"]}, "Nyitra": {"r": ["sugar"], "f": []}, "Bars": {"r": ["wood", "wheat"], "f": []}, "Hont": {"r": [], "f": ["élelmiszeripar", "vas-és fémipar"]}, "Zólyom": {"r": ["gold"], "f": ["könnyűipar"]}, "Trencsén": {"r": ["livestock", "coal"], "f": []}, "Árva": {"r": ["wood", "coal"], "f": []}, "Liptó": {"r": ["wood"], "f": []}, "Szepes": {"r": ["gold", "livestock", "iron_ore"], "f": []}, "Sáros": {"r": ["wood", "gold"], "f": []}, "Zemplén": {"r": ["wine"], "f": []}, "Ung": {"r": ["wood", "livestock"], "f": []}, "Bereg": {"r": ["wine", "wheat"], "f": []}, "Szatmár": {"r": ["wheat", "corn", "livestock"], "f": []}, "Szabolcs": {"r": [], "f": ["egyetem"]}, "Hajdú": {"r": ["livestock"], "f": ["könnyűipar", "élelmiszeripar", "gépgyártás"]}, "Nógrád": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Borsod": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Heves": {"r": ["wine", "coal"], "f": []}, "Jász-Nagykun-Szolnok": {"r": ["wheat", "corn"], "f": ["gépgyártás"]}, "Pest-Pilis-Solt-Kiskun": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Csongrád": {"r": ["wheat", "livestock"], "f": ["könnyűipar"]}, "Csanád": {"r": ["sugar", "wheat", "corn", "livestock"], "f": []}, "Békés": {"r": ["wheat", "corn", "livestock"], "f": []}, "Bács-Bodrog": {"r": ["wine", "sugar", "wheat", "corn", "livestock"], "f": []}, "Torontál": {"r": ["wheat", "corn"], "f": []}, "Temes": {"r": ["coal"], "f": ["gépgyártás"]}, "Hunyad": {"r": ["gold", "livestock", "iron_ore"], "f": ["vas-és fémipar"]}, "Arad": {"r": ["wine", "wheat", "livestock"], "f": ["gépgyártás"]}, "Bihar": {"r": ["sugar", "livestock"], "f": ["élelmiszeripar"]}, "Szilágy": {"r": ["wood", "wheat", "corn"], "f": []}, "Szolnok-Doboka": {"r": ["wood", "wheat"], "f": ["vas-és fémipar"]}, "Máramaros": {"r": ["gold", "livestock"], "f": []}, "Beszterce-Naszód": {"r": ["wood"], "f": []}, "Kolozs": {"r": [], "f": ["könnyűipar", "egyetem"]}, "Torda-Aranyos": {"r": ["gold", "livestock"], "f": []}, "Alsó-Fehér": {"r": ["wine", "gold", "livestock"], "f": []}, "Szeben": {"r": ["coal"], "f": ["vas-és fémipar"]}, "Fogaras": {"r": ["livestock"], "f": []}, "Kis-Küküllő": {"r": ["wine", "wheat"], "f": []}, "Udvarhely": {"r": ["wheat", "corn"], "f": []}, "Háromszék": {"r": ["wood"], "f": []}, "Csík": {"r": ["wood"], "f": []}, "Maros-Torda": {"r": ["livestock"], "f": ["könnyűipar", "gépgyártás"]}, "Budapest": {"r": ["sugar", "wheat", "corn"], "f": ["gépgyártás", "egyetem"]}, "Ugocsa": {"r": [], "f": []}, "Krassó-Szőrény": {"r": ["coal", "iron_ore"], "f": ["vas-és fémipar"]}, "Gömör-és-Kis-Hont": {"r": ["iron_ore"], "f": []}, "Abaúj-Torna": {"r": ["gold"], "f": ["vas-és fémipar"]}, "Túrócz": {"r": ["wood"], "f": []}, "Nagy-Küküllő": {"r": ["wood", "wheat"], "f": []}, "Brassó": {"r": [], "f": ["könnyűipar"]}}, "start": {"Pest-Pilis-Solt-Kiskun": "nagyur", "Budapest": "nagyur", "Nógrád": "nagyur", "Hont": "nagyur", "Somogy": "penzugy", "Belovár-Kőrós": "penzugy", "Zala": "penzugy", "Szatmár": "hadugy", "Szilágy": "hadugy", "Szabolcs": "hadugy", "Trencsén": "igazsag", "Nyitra": "igazsag", "Pozsony": "igazsag", "Gömör-és-Kis-Hont": "belugy", "Abaúj-Torna": "belugy", "Zemplén": "belugy", "Alsó-Fehér": "gazdasagi", "Kis-Küküllő": "gazdasagi", "Nagy-Küküllő": "gazdasagi"}, "offices": [{"key": "nagyur", "name": "Nagyúr", "color": "#c0392b", "duty": "Vezeti a közös célokat, elősegíti a belső egységet.", "ability": "Rendeletet adhat ki, amit mindenki betartani köteles; a Változás akciónál 5 mozgást végezhet."}, {"key": "penzugy", "name": "Pénzügyminiszter", "color": "#27ae60", "duty": "Fenntartja a kereskedelmet és az árstabilitást.", "ability": "Felső és alsó határt szabhat a kereskedelmi árakra; egyszer vétózhat egy akciót."}, {"key": "hadugy", "name": "Hadügyminiszter", "color": "#2c3e50", "duty": "Külső támadás esetén haditervet dolgoz ki, irányítja a hadműveleteket.", "ability": "Kötelező hadi fejlesztéseket rendelhet el; +1 szénért 3 egységet állíthat ki."}, {"key": "igazsag", "name": "Igazságügy-miniszter", "color": "#8e44ad", "duty": "A bírósági kérdésekben dönt.", "ability": "+1 fáért +1 munkaerőt helyezhet fel a munkaerő akciónál."}, {"key": "belugy", "name": "Belügyminiszter", "color": "#e67e22", "duty": "Belső konfliktusok békés megoldása.", "ability": "Egyszer vétózhatja a Nagyúr rendeletét; +1 téglával 3 dolgot építhetsz egyszerre."}, {"key": "gazdasagi", "name": "Gazdasági biztos", "color": "#16a085", "duty": "A gazdasági stabilitást biztosítja.", "ability": "Termeléskor +1-et ad a dobáshoz, de 1 vagy 6 esetén nem termel."}]};
 const EMAIL_DOMAIN = 'jatek.local';
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
 const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
-const BICON = {
-  'laktanya': 'svg/gyar.svg', 'barracks': 'svg/gyar.svg', 'gyar': 'svg/gyar.svg',
-  'var': 'svg/var.svg', 'castle': 'svg/var.svg', 'vár': 'svg/var.svg',
-  'varos': 'svg/varos.svg', 'city': 'svg/varos.svg', 'város': 'svg/varos.svg'
-};
-const UNIT_ICONS = { puskas: 'svg/puskas.svg', agyus: 'svg/agyus.svg' };
-const DIPLO_COLORS = { war: '#d00000', neutral: null, coop: '#1b5e20', ally: '#6a1b9a' };
-const DIPLO_NAMES  = { war: 'Hadi', neutral: 'Semleges', coop: 'Együttműködés', ally: 'Társ' };
+const BICON = { 'laktanya':'svg/gyar.svg','barracks':'svg/gyar.svg','gyar':'svg/gyar.svg','var':'svg/var.svg','castle':'svg/var.svg','vár':'svg/var.svg','varos':'svg/varos.svg','city':'svg/varos.svg','város':'svg/varos.svg' };
+const UNIT_ICONS = { puskas:'svg/puskas.svg', agyus:'svg/agyus.svg' };
+const DIPLO_COLORS = { war:'#d00000', neutral:null, coop:'#1b5e20', ally:'#6a1b9a' };
+const DIPLO_NAMES = { war:'Hadi', neutral:'Semleges', coop:'Együttműk.', ally:'Társ' };
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionSource:null, actionSourceName:null, actionTarget:null};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionTarget:null, hoverTarget:null, pickTimeout:null};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
-/* ---------- diplo helpers ---------- */
 function diploStatus(a, b) {
   if (!a || !b || a === b) return 'self';
   const [x, y] = a < b ? [a, b] : [b, a];
@@ -117,7 +116,6 @@ function imgFallback(img) {
   img.replaceWith(span);
 }
 
-/* ---------- indulás ---------- */
 async function boot() {
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) { S.user = null; return renderAuth(); }
@@ -140,7 +138,7 @@ async function boot() {
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
-const safeBoot = () => boot().catch(e => { renderAuth(); setMsg('A Supabase nem érhető el (' + e.message + '). Próbáld a demót.', true); });
+const safeBoot = () => boot().catch(e => { renderAuth(); setMsg('A Supabase nem érhető el (' + e.message + ').', true); });
 if (sb) sb.auth.onAuthStateChange(ev => { if (['INITIAL_SESSION','SIGNED_IN','SIGNED_OUT'].includes(ev)) safeBoot(); });
 else setTimeout(renderAuth, 0);
 
@@ -156,16 +154,16 @@ function huErr(m) {
   if (/invalid login/i.test(m)) return 'Hibás felhasználónév vagy jelszó.';
   if (/already registered|already exists/i.test(m)) return 'Ez a felhasználónév már foglalt.';
   if (/at least|weak/i.test(m)) return 'A jelszó legalább 6 karakter legyen.';
-  if (/rate limit|too many/i.test(m)) return 'Túl sok próbálkozás, várj egy percet.';
-  if (/failed to fetch|network/i.test(m)) return 'Nincs kapcsolat a szerverrel.';
+  if (/rate limit|too many/i.test(m)) return 'Túl sok próbálkozás.';
+  if (/failed to fetch|network/i.test(m)) return 'Nincs kapcsolat.';
   return m;
 }
 function setMsg(t, bad = true) { const m = $('amsg'); if (m) { m.textContent = t; m.className = 'hint ' + (bad ? 'err' : 'okm'); } }
 function renderAuth(force) {
   if (!force && $('un')) return;
-  const reg = authMode === 'register', offs = (S.offices.length ? S.offices : DEMO.offices);
+  const reg = authMode === 'register', offs = (S.offices.length ? S.offices : [{key:'nagyur',name:'Nagyúr',color:'#c0392b'},{key:'penzugy',name:'Pénzügyminiszter',color:'#27ae60'},{key:'hadugy',name:'Hadügyminiszter',color:'#2c3e50'},{key:'igazsag',name:'Igazságügy',color:'#8e44ad'},{key:'belugy',name:'Belügyminiszter',color:'#e67e22'},{key:'gazdasagi',name:'Gazdasági biztos',color:'#16a085'}]);
   $('app').innerHTML = `<div class="auth"><div class="hero"><h1>Pályi-játék</h1>
-    <p><i>Nagy-Magyarország, 1851.</i> A Habsburgok megbuktak, a Pályi-kormány most építi újra az országot. Vállalj tisztséget, termelj, kereskedj, építkezz – és vigyázz a határokra.</p>
+    <p><i>Nagy-Magyarország, 1851.</i> A Habsburgok megbuktak, a Pályi-kormány most építi újra az országot.</p>
     <p>72 vármegye, hat tisztség, közös célok és kemény alkuk.</p>
     <div class="offs">${offs.map(o => `<span><span class="dot" style="background:${o.color}"></span> ${esc(o.name)}</span>`).join('')}</div></div>
     <div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div>
@@ -200,7 +198,7 @@ async function submitAuth() {
   const reg = authMode === 'register', u = $('un').value.trim(), pw = $('pw').value;
   if (!sb) return setMsg('A Supabase nem érhető el.');
   if (!u || !pw) return setMsg('Add meg a felhasználónevet és a jelszót.');
-  if (reg && !NAME_RE.test(u)) return setMsg('A felhasználónév 3–24 karakter: betűk, számok, _ . -');
+  if (reg && !NAME_RE.test(u)) return setMsg('A felhasználónév 3–24 karakter.');
   if (pw.length < 6) return setMsg('A jelszó legalább 6 karakter legyen.');
   if (reg && pw !== $('pw2').value) return setMsg('A két jelszó nem egyezik.');
   const btn = $('go'); btn.disabled = true; setMsg(reg ? 'Regisztráció…' : 'Belépés…', false);
@@ -236,13 +234,10 @@ const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.d
 
 function demoStart() {
   S.demo = true; S.user = { id:'demo' }; S.profile = { username:'admin (demó)', is_admin:true };
-  S.offices = DEMO.offices; S.btypes = {}; S.mySeats = {};
-  S.defs = Object.entries(DEMO.start).map(([name, start_office]) => ({ name, start_office }));
+  S.offices = []; S.btypes = {}; S.mySeats = {}; S.defs = [];
   S.games = [{ id:'demo', name:'Demó játék', status:'lobby', speed_multiplier:1 }];
-  S.players = DEMO.offices.map(o => ({ id:'p_' + o.key, office:o.key, nation_name:o.name, color:o.color, profile_id:null, profiles:null }));
-  S.counties = Object.keys(POS).map(n => { const d = DEMO.counties[n] || { r:[], f:[] };
-    return { id:'c_' + n, owner_id:DEMO.start[n] ? 'p_' + DEMO.start[n] : null, buildings:[],
-      county_definitions:{ name:n, features:d.f, county_resources:d.r.map(resource => ({ resource })) } }; });
+  S.players = [{id:'p_a',nation_name:'A',color:'#c0392b',profile_id:null,profiles:null}];
+  S.counties = Object.keys(POS).map(n => ({ id:'c_'+n, owner_id:null, buildings:[], county_definitions:{name:n,features:[],county_resources:[]} }));
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
   renderList();
 }
@@ -256,13 +251,13 @@ function renderList() {
     <input id="gn" class="grow" placeholder="Játék neve" style="min-width:180px">
     <label>Sebesség ×<input id="gs" type="number" step="0.5" min="0.5" value="1" style="width:76px"></label>
     <label>Győzelmi pont<input id="gv" type="number" placeholder="opc." style="width:90px"></label>
-    <label class="chip"><input id="gt" type="checkbox" checked> Teszt: mind a 6 tisztség</label>
+    <label class="chip"><input id="gt" type="checkbox" checked> Teszt: 6 tisztség</label>
     <button class="btn" onclick="createGame()">Létrehozás</button></div></div>`;
   const list = S.games.filter(g => adm || g.status !== 'finished' || S.mySeats[g.id]);
   h += `<h2>Játékok</h2>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="games">` + (list.map(g => {
     const mine = S.mySeats[g.id], oname = S.offices.find(o => o.key === mine)?.name;
     return `<div class="game"><div class="row"><b class="grow">${esc(g.name)}</b><span class="badge ${g.status}">${ST[g.status]}</span></div>
-      <div style="color:var(--muted);margin:4px 0 8px">Sebesség ×${g.speed_multiplier}${mine ? ' · tisztséged: ' + esc(oname) : ''}</div>` +
+      <div style="color:var(--muted);margin:4px 0 8px">Sebesség ×${g.speed_multiplier}${mine ? ' · ' + esc(oname) : ''}</div>` +
       (adm || mine ? `<button class="btn" onclick="openGame('${g.id}')">Megnyitás</button>`
         : g.status !== 'finished' ? `<button class="btn" onclick="startJoin('${g.id}')">Csatlakozás</button>` : '') + `</div>`; }).join('')
     || '<p>Még nincs játék.</p>') + '</div></main>';
@@ -270,7 +265,7 @@ function renderList() {
 }
 async function createGame() {
   if (S.demo) return openGame('demo');
-  const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet a játéknak'; return renderList(); }
+  const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet'; return renderList(); }
   const test = $('gt').checked;
   const { data, error } = await sb.rpc('admin_create_game', { p_name:name, p_speed:Number($('gs').value) || 1, p_victory_points:$('gv').value ? Number($('gv').value) : null });
   if (error) { S.msg = error.message; return renderList(); }
@@ -295,7 +290,6 @@ async function doJoin() {
   await loadGames(); await openGame(S.joinGame);
 }
 
-/* ---------- state ---------- */
 async function loadState() {
   if (S.demo) return;
   const [p, c] = await Promise.all([
@@ -331,11 +325,16 @@ async function loadState() {
     const ordm = await sb.from('order_members').select('*').in('order_id', S.orders.map(o => o.id));
     S.orderMembers = ordm.data || [];
   } else S.orderMembers = [];
+  // Clean stale selections
+  if (S.selectedUnits.length) {
+    const validIds = new Set((S.units||[]).filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now())).map(u => u.id));
+    S.selectedUnits = S.selectedUnits.filter(id => validIds.has(id));
+  }
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
     buildings:(b.data || []).filter(y => y.county_id === x.id) }));
-  if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket (futott a seed_counties.sql?).';
+  if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket.';
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
 }
 async function openGame(id) {
@@ -349,11 +348,7 @@ async function openGame(id) {
   S.ch.subscribe();
 }
 const rpc = async (fn, args) => {
-  if (S.demo) {
-    if (fn === 'admin_set_game_status') S.games[0].status = args.p_status;
-    if (fn === 'admin_assign_county') { const c = S.counties.find(x => x.id === args.p_county); if (c) c.owner_id = args.p_player; }
-    S.msg = ''; return renderGame();
-  }
+  if (S.demo) { if (fn === 'admin_set_game_status') S.games[0].status = args.p_status; if (fn === 'admin_assign_county') { const c = S.counties.find(x => x.id === args.p_county); if (c) c.owner_id = args.p_player; } S.msg = ''; return renderGame(); }
   const { error } = await sb.rpc(fn, args); S.msg = error ? error.message : ''; await loadGames(); await loadState(); renderGame(); };
 const setStatus = s => rpc('admin_set_game_status', { p_game:S.sel, p_status:s });
 const seedTest = () => rpc('admin_seed_offices', { p_game:S.sel });
@@ -365,9 +360,39 @@ async function delGame() {
   S.msg = error?.message || ''; await loadGames(); renderList();
 }
 
+function renderActionBar() {
+  const g = S.games.find(x => x.id === S.sel);
+  const running = g?.status === 'running';
+  const btnDis = running ? '' : 'disabled';
+  let h = `
+    <button class="btn ${S.actionMode==='attack'?'active':''}" onclick="startAction('attack')" ${btnDis}>⚔ Támadás</button>
+    <button class="btn ${S.actionMode==='defend'?'active':''}" onclick="startAction('defend')" ${btnDis}>🛡 Védekezés</button>
+    <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')" ${btnDis}>→ Mozgatás</button>`;
+  if (S.actionMode) {
+    if (S.actionPhase === 'select-units') {
+      h += `<span class="grow"></span>
+        <span class="chip" style="background:${S.selectedUnits.length ? '#e8f5e9' : ''}">Kiválasztva: ${S.selectedUnits.length} köteg</span>
+        <button class="btn" onclick="advanceToTarget()" ${S.selectedUnits.length === 0 ? 'disabled' : ''}>Cél kiválasztása →</button>
+        <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
+    } else if (S.actionPhase === 'select-target') {
+      h += `<span class="grow"></span>
+        <span class="chip" style="background:#fff3cd">Cél kiválasztása…</span>
+        <button class="btn ghost" onclick="backToUnits()">← Vissza</button>
+        <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
+    }
+  } else {
+    h += `<span class="grow"></span>`;
+  }
+  h += `
+    <button class="btn ghost" onclick="openDiplomacy()">📜 Diplomácia</button>
+    <button class="btn ghost" onclick="openOrders()">🏰 Vitézi rend</button>
+    <span id="action-hint" style="flex-basis:100%"></span>`;
+  return h;
+}
+
 function renderGame() {
   const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
-  const adm = S.profile.is_admin, cnt = id => S.counties.filter(c => c.owner_id === id).length;
+  const adm = S.profile.is_admin;
   const sc = $('wrap') ? [$('wrap').scrollLeft, $('wrap').scrollTop] : null;
   $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button>
     <h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span><span class="grow"></span>` +
@@ -377,53 +402,89 @@ function renderGame() {
     <button class="btn ghost" onclick="seedTest()">Teszt</button>
     <button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>
     ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
-    <div class="row" style="margin-top:10px">` + (S.players.map(p => {
-      const d = p.id === S.actAs ? 'self' : diploStatus(S.actAs, p.id);
-      const dCol = DIPLO_COLORS[d] || '#888';
-      const dName = DIPLO_NAMES[d] || 'Te';
-      return `<span class="chip" style="background:${esc(p.color)}26;border:2px solid ${dCol}">
-        <span class="dot" style="background:${esc(p.color)}"></span>
-        ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} várm. · <b style="color:${dCol}">${dName}</b></span>`;
-    }).join('') || 'Még nincs játékos.') + `</div>
+    <div class="row" style="margin-top:10px" id="player-chips"></div>
     <div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>
     <div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div>
     <div id="msz"><div id="map"></div></div></div>
-    <div id="action-bar">
-      <button class="btn ${S.actionMode==='attack'?'active':''}" onclick="startAction('attack')">⚔ Támadás</button>
-      <button class="btn ${S.actionMode==='defend'?'active':''}" onclick="startAction('defend')">🛡 Védekezés</button>
-      <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')">→ Mozgatás</button>
-      <button class="btn ghost" onclick="cancelAction()" ${!S.actionMode?'style="display:none"':''}>✕ Mégse</button>
-      <span id="action-hint"></span>
-      <span class="grow"></span>
-      <button class="btn ghost" onclick="openDiplomacy()">📜 Diplomácia</button>
-      <button class="btn ghost" onclick="openOrders()">🏰 Vitézi rend</button>
-    </div>
-    </main>`;
+    <div id="action-bar">${renderActionBar()}</div></main>`;
   buildMap(); setZoom(Z);
   if (sc) { $('wrap').scrollLeft = sc[0]; $('wrap').scrollTop = sc[1]; }
-  renderStatus(); renderPick();
+  renderGameUpdate();
 }
+
+function renderGameUpdate() {
+  if (!els || Object.keys(els).length === 0) { renderGame(); return; }
+  // diplo classes
+  const mapEl = $('map');
+  if (mapEl) {
+    mapEl.classList.toggle('phase-select-units', S.actionPhase === 'select-units');
+  }
+  paintAll();
+  renderStatus();
+  renderPlayerChips();
+  if (S.picked) renderPick(); else { const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }
+  const ab = $('action-bar'); if (ab) ab.innerHTML = renderActionBar();
+}
+
+function renderPlayerChips() {
+  const el = $('player-chips');
+  if (!el) return;
+  const cnt = id => S.counties.filter(c => c.owner_id === id).length;
+  el.innerHTML = S.players.map(p => {
+    const d = p.id === S.actAs ? 'self' : diploStatus(S.actAs, p.id);
+    const dCol = DIPLO_COLORS[d] || '#888';
+    const dName = d === 'self' ? 'Te' : (DIPLO_NAMES[d] || 'Semleges');
+    return `<span class="chip" style="background:${esc(p.color)}26;border:2px solid ${dCol}">
+      <span class="dot" style="background:${esc(p.color)}"></span>
+      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} várm. · <b style="color:${dCol}">${dName}</b></span>`;
+  }).join('') || 'Még nincs játékos.';
+}
+
 function setZoom(z) {
   if (z === null || z === undefined) z = Math.max(.3, Math.min(1, ($('wrap').clientWidth - 6) / 1400));
   Z = Math.max(.3, Math.min(1.5, z));
   $('map').style.transform = `scale(${Z})`; $('msz').style.width = 1400 * Z + 'px'; $('msz').style.height = 1000 * Z + 'px';
 }
+
 function buildMap() {
   els = {};
+  const mapEl = $('map');
+  if (mapEl && !mapEl.dataset.listener) {
+    mapEl.dataset.listener = '1';
+    mapEl.addEventListener('click', (e) => {
+      const unitEl = e.target.closest('.unit-icon[data-unit-id]');
+      if (unitEl && S.actionPhase === 'select-units') {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleUnitSelection(unitEl.dataset.unitId);
+      }
+    }, true);
+  }
   Object.keys(POS).forEach(n => {
     const box = document.createElement('div');
     box.className = 'county-svg'; box.style.left = POS[n].left; box.style.top = POS[n].top;
-    box.onmouseenter = e => tip(n, e); box.onmousemove = moveTip;
-    box.onmouseleave = () => $('tooltip').style.display = 'none';
+    box.onmouseenter = e => {
+      S.hoverTarget = S.byName[n]?.id || null;
+      if (S.actionPhase === 'select-target') renderRoutes();
+      tip(n, e);
+    };
+    box.onmousemove = moveTip;
+    box.onmouseleave = () => {
+      S.hoverTarget = null;
+      if (S.actionPhase === 'select-target') renderRoutes();
+      $('tooltip').style.display = 'none';
+    };
     box.onclick = e => { pick(n); tip(n, e); };
-    $('map').appendChild(box); els[n] = box;
+    mapEl.appendChild(box); els[n] = box;
     (svgCache[n] ??= fetch('svg/' + n + '.svg').then(r => r.ok ? r.text() : '').catch(() => '')).then(t => {
       box.appendChild(t ? new DOMParser().parseFromString(t, 'image/svg+xml').querySelector('svg')
         : new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg" width="26" height="18" fill="#d3d3d3"><rect width="26" height="18" rx="4" stroke="#fff"/></svg>', 'image/svg+xml').querySelector('svg'));
       paint(n);
     });
   });
+  renderRoutes();
 }
+
 const _norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 function _bKey(b){ return _norm(b.building_type); }
 function _bName(b){ return _norm(S.btypes[b.building_type] || ''); }
@@ -433,6 +494,70 @@ function isComplete(b){ return !b.completes_at || new Date(b.completes_at) <= Da
 function isSameBType(stored, uiB){ return _bKey(stored)===_norm(uiB.key) || _bName(stored)===_norm(uiB.name); }
 function biconFor(b) { return BICON[_norm(b.building_type)] || BICON[_norm(S.btypes[b.building_type])] || null; }
 
+function countyCenter(name) {
+  const box = els[name];
+  const svg = box?.querySelector('svg');
+  const p = POS[name];
+  if (!p) return null;
+  let w = 26, h = 18;
+  if (svg) {
+    const vb = svg.getAttribute('viewBox');
+    if (vb) {
+      const parts = vb.split(/\s+/).map(Number);
+      if (parts.length === 4) { w = parts[2]; h = parts[3]; }
+    } else {
+      w = parseFloat(svg.getAttribute('width')) || w;
+      h = parseFloat(svg.getAttribute('height')) || h;
+    }
+  }
+  return { x: parseFloat(p.left) + w / 2, y: parseFloat(p.top) + h / 2 };
+}
+
+function renderRoutes() {
+  const old = $('route-svg');
+  if (old) old.remove();
+  const mapEl = $('map'); if (!mapEl) return;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'route-svg';
+  svg.setAttribute('width', 1400); svg.setAttribute('height', 1000);
+  svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:5;opacity:0.85;';
+  // Pending movements
+  for (const m of (S.movements || [])) {
+    const fromC = S.counties.find(c => c.id === m.from_county);
+    const toC = S.counties.find(c => c.id === m.to_county);
+    if (!fromC || !toC) continue;
+    const from = countyCenter(fromC.county_definitions.name);
+    const to = countyCenter(toC.county_definitions.name);
+    if (!from || !to) continue;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
+    line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
+    line.setAttribute('stroke', m.action === 'attack' ? '#d00000' : '#ff9800');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-dasharray', '8,4');
+    svg.appendChild(line);
+  }
+  // Hover preview during select-target
+  if (S.actionPhase === 'select-target' && S.hoverTarget && S.actionSource) {
+    const srcC = S.counties.find(c => c.id === S.actionSource);
+    const tgtC = S.counties.find(c => c.id === S.hoverTarget);
+    if (srcC && tgtC) {
+      const from = countyCenter(srcC.county_definitions.name);
+      const to = countyCenter(tgtC.county_definitions.name);
+      if (from && to) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
+        line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
+        line.setAttribute('stroke', '#b8892b');
+        line.setAttribute('stroke-width', '3');
+        line.setAttribute('stroke-dasharray', '12,6');
+        svg.appendChild(line);
+      }
+    }
+  }
+  mapEl.appendChild(svg);
+}
+
 function paint(n) {
   const box = els[n]; if (!box) return;
   const c = S.byName[n]; if (!c) return;
@@ -440,15 +565,20 @@ function paint(n) {
   const svg = box.querySelector('svg');
   if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
 
-  // Diplo border + battle glow
   const diplo = ownerDiplo(c.owner_id);
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
-  if (battleHere) {
-    box.style.filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
-  } else {
-    const borderColor = DIPLO_COLORS[diplo];
-    box.style.filter = borderColor ? `drop-shadow(0 0 6px ${borderColor}) drop-shadow(0 0 3px ${borderColor})` : '';
+  const isSource = S.actionPhase && S.actionSource === c.id;
+
+  let filter = '';
+  if (isSource) {
+    filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
+  } else if (battleHere) {
+    filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
+  } else if (DIPLO_COLORS[diplo]) {
+    filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   }
+  // Only update if changed (no transition means no flicker anyway)
+  if (box.style.filter !== filter) box.style.filter = filter;
 
   // Building icons
   let iconBox = box.querySelector('.bicons');
@@ -470,27 +600,37 @@ function paint(n) {
     `<img src="${src}" alt="" style="width:14px;height:14px;object-fit:contain;opacity:${inProgress ? '.4' : '1'};filter:drop-shadow(0 1px 1px rgba(0,0,0,.7))">`
   ).join('');
 
-  // Own + allied units at bottom
+  // Unit icons
   let unitsBox = box.querySelector('.units');
   if (!unitsBox) {
     unitsBox = document.createElement('div');
     unitsBox.className = 'units';
-    unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;pointer-events:none;z-index:4;';
+    unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;';
     box.appendChild(unitsBox);
   }
   const visible = (S.units || []).filter(u => u.county_id === c.id && (
     u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const uHtml = visible.map(u => {
     const isSelf = u.player_id === S.actAs;
+    const isSelected = S.selectedUnits.includes(u.id);
     const bg = isSelf ? '#555' : '#9c27b0';
     const src = UNIT_ICONS[u.unit_type];
+    const training = u.completes_at && new Date(u.completes_at) > Date.now();
+    const clickable = S.actionPhase === 'select-units' && isSelf && !training && u.status === 'ready';
     const icon = src
       ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;" alt="">`
       : `<span style="display:inline-block;width:10px;height:10px;background:${bg};border:1px solid #222;box-sizing:border-box;"></span>`;
-    return `<span style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;">
+    const border = isSelected ? '2px solid gold' : '1px solid transparent';
+    const dataAttr = clickable ? `data-unit-id="${u.id}"` : '';
+    return `<span class="unit-icon${isSelected ? ' selected' : ''}" ${dataAttr} style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;border:${border};${clickable ? 'cursor:pointer;' : ''}">
       ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${u.amount}</span></span>`;
   }).join('');
   unitsBox.innerHTML = uHtml;
+}
+
+function paintAll() {
+  for (const n of Object.keys(els)) paint(n);
+  renderRoutes();
 }
 
 function unitLine(u) {
@@ -501,8 +641,9 @@ function unitLine(u) {
   if (!done) return `${u.amount}× ${name} <small>(kiképzés: <span data-unit-end="${u.id}">…</span>)</small>`;
   return `${u.amount}× ${name} <small>(${hpPct}% HP)</small>`;
 }
+
 function info(n) {
-  const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs az adatbázisban)`;
+  const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs)`;
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
   const units = (S.units || []).filter(u => u.county_id === c.id);
@@ -529,67 +670,107 @@ const curMp = () => S.mp ? Math.max(S.mp.manpower, Math.min(S.mp.cap, S.mp.manpo
 const costHtml = cost => Object.entries(cost || {}).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
 const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_bonus * 100)}% termelés`, b.manpower_bonus > 0 && `+${b.manpower_bonus} munkaerő/óra`,
   b.defense_bonus > 0 && `+${Math.round(b.defense_bonus * 100)}% védelem`].filter(Boolean).join(', ') || '–';
+
 const refreshNow = async () => {
   if (!S.sel) return;
   try { await sb.rpc('tick_military', {p_game:S.sel}); } catch(e){ console.warn('tick_military:', e.message); }
-  await loadState(); renderGame();
+  await loadState();
+  if (!els || Object.keys(els).length === 0) { renderGame(); return; }
+  renderGameUpdate();
 };
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
 
-/* ---------- action mode ---------- */
 function pick(n) {
-  const c = S.byName[n];
-  if (S.actionMode && c) {
-    if (!S.actionSource) {
-      if (c.owner_id !== S.actAs) { updateActionHint('Ez nem a te vármegyéd.'); return; }
-      S.actionSource = c.id; S.actionSourceName = n;
-      updateActionHint(`Forrás: ${n}. Kattints a célra.`);
-      return;
+  if (S.actionPhase === 'select-units') return;
+  if (S.actionPhase === 'select-target') {
+    const c = S.byName[n]; if (!c) return;
+    if (c.id === S.actionSource) { updateActionHint('A cél nem lehet azonos a forrással.'); return; }
+    if (S.actionMode === 'attack') {
+      const d = ownerDiplo(c.owner_id);
+      if (d === 'coop' || d === 'ally') { alert('Szövetségesre / együttműködőre nem támadhatsz.'); return; }
+      if (d === 'self') { alert('Saját vármegyére nem támadhatsz.'); return; }
     }
-    if (c.id !== S.actionSource) {
-      if (S.actionMode === 'attack') {
-        const d = ownerDiplo(c.owner_id);
-        if (d === 'coop' || d === 'ally') { alert('Szövetségesre / együttműködőre nem támadhatsz.'); return; }
-        if (d === 'self') { alert('Saját vármegyére nem támadhatsz.'); return; }
-      }
-      S.actionTarget = c.id;
-      openSendModal(S.actionSource, c.id, S.actionMode);
-      return;
-    }
+    S.actionTarget = c.id;
+    openSendModal(S.actionSource, c.id, S.actionMode);
+    return;
   }
-  S.picked = n; renderPick();
+  clearTimeout(S.pickTimeout);
+  S.picked = n;
+  renderPick();
+  S.pickTimeout = setTimeout(() => { S.picked = null; renderPick(); }, 5000);
 }
-function startAction(mode) {
-  S.actionMode = mode; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null;
-  const hints = { attack: '⚔ Támadás: válassz saját forrás vármegyét.', defend: '🛡 Védekezés: válassz saját forrás vármegyét.', move: '→ Mozgatás: válassz saját forrás vármegyét.' };
-  updateActionHint(hints[mode] || '');
-  renderGame();
-}
-function cancelAction() {
-  S.actionMode = null; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null;
-  updateActionHint('');
-  renderGame();
-}
+
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
 
-/* ---------- send modal ---------- */
+function startAction(mode) {
+  if (S.actionMode === mode) { cancelAction(); return; }
+  S.actionMode = mode;
+  S.actionPhase = 'select-units';
+  S.selectedUnits = [];
+  S.actionSource = null;
+  S.actionTarget = null;
+  S.hoverTarget = null;
+  clearTimeout(S.pickTimeout);
+  const hints = { attack:'⚔ Támadás: kattints a saját egységeidre (1 vármegyéből), majd "Cél kiválasztása".', defend:'🛡 Védekezés: kattints a saját egységeidre, majd "Cél kiválasztása".', move:'→ Mozgatás: kattints a saját egységeidre, majd "Cél kiválasztása".' };
+  renderGameUpdate();
+  updateActionHint(hints[mode] || '');
+}
+
+function cancelAction() {
+  S.actionMode = null; S.actionPhase = null;
+  S.selectedUnits = []; S.actionSource = null; S.actionTarget = null; S.hoverTarget = null;
+  renderGameUpdate();
+  updateActionHint('');
+}
+
+function backToUnits() {
+  S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null;
+  renderGameUpdate();
+  updateActionHint('Válassz egységeket, majd "Cél kiválasztása".');
+}
+
+function advanceToTarget() {
+  if (S.selectedUnits.length === 0) return;
+  const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
+  if (!units.length) return;
+  const sourceCountyId = units[0].county_id;
+  if (!units.every(u => u.county_id === sourceCountyId)) { alert('Az egységek különböző vármegyékben vannak.'); return; }
+  S.actionSource = sourceCountyId;
+  S.actionPhase = 'select-target';
+  renderGameUpdate();
+  updateActionHint('Kattints a cél vármegyére (a vonal mutatja az útvonalat).');
+}
+
+function toggleUnitSelection(unitId) {
+  if (!unitId) return;
+  const idx = S.selectedUnits.indexOf(unitId);
+  if (idx >= 0) { S.selectedUnits.splice(idx, 1); }
+  else {
+    const unit = (S.units||[]).find(u => u.id === unitId);
+    if (!unit) return;
+    const existing = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
+    if (existing.length > 0 && existing[0].county_id !== unit.county_id) { alert('Csak azonos vármegyéből választhatsz.'); return; }
+    S.selectedUnits.push(unitId);
+  }
+  renderGameUpdate();
+}
+
 function sendActionNote(tgtCounty, action) {
   const owner = tgtCounty.owner_id;
-  if (!owner) return '🏴 Uralatlan — 1-es támadású helyőrség védi. Azonnali elfoglalás 10% HP veszteséggel.';
+  if (!owner) return '🏴 Uralatlan — 1-es helyőrség védi. Azonnali elfoglalás 10% HP veszteséggel.';
   if (owner === S.actAs) return '🏰 Saját terület — békés erősítés.';
   const d = diploStatus(S.actAs, owner);
   if (d === 'coop') return '🤝 Együttműködés — békés áthaladás.';
   if (d === 'ally') return '💜 Társ — békés áthaladás. Látod egységeit.';
-  if (d === 'neutral') return '⚠ Semleges — a belépés HÁBORÚT deklarál, és csata lesz!';
+  if (d === 'neutral') return '⚠ Semleges — a belépés HÁBORÚT deklarál!';
   if (d === 'war') return '⚔ Hadi állapot — csata lesz.';
   return '';
 }
+
 async function openSendModal(srcId, tgtId, action) {
   if ($('send-modal')) return;
-  const units = (S.units || []).filter(u =>
-    u.county_id === srcId && u.player_id === S.actAs && u.status === 'ready' &&
-    (!u.completes_at || new Date(u.completes_at) <= Date.now()));
-  if (!units.length) { alert('Nincs mozgatható egység a forrásban.'); cancelAction(); return; }
+  const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
+  if (!units.length) { alert('Nincs kiválasztott egység.'); cancelAction(); return; }
 
   const tgtC = S.counties.find(x => x.id === tgtId);
   const srcC = S.counties.find(x => x.id === srcId);
@@ -618,18 +799,17 @@ async function openSendModal(srcId, tgtId, action) {
         <button class="btn" onclick="confirmSend('${action}')">Küldés</button>
         <button class="btn ghost" onclick="closeSendModal()">Mégse</button>
       </div>
-      <p id="send-msg" class="hint" style="font-size:12px;color:var(--muted)">A vár +2 védelmet ad a védőnek, és +1 támadást a támadónak (ha a forrásban vár van).</p>
+      <p id="send-msg" class="hint" style="font-size:12px;color:var(--muted)">A vár +2 védelmet ad a védőnek, és +1 támadást a támadónak (forrásban vár).</p>
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
 }
 function closeSendModal() { $('send-modal')?.remove(); }
+
 async function confirmSend(action) {
   const src = S.actionSource, tgt = S.actionTarget;
   if (!src || !tgt) return closeSendModal();
-  const units = (S.units || []).filter(u =>
-    u.county_id === src && u.player_id === S.actAs && u.status === 'ready' &&
-    (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+  const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
   const sends = units.map(u => ({ id: u.id, amount: Number($('send-' + u.id)?.value) || 0 })).filter(x => x.amount > 0);
   if (!sends.length) { $('send-msg').textContent = 'Válassz legalább 1 egységet.'; return; }
 
@@ -643,7 +823,6 @@ async function confirmSend(action) {
   if (ok) { cancelAction(); await refreshNow(); }
 }
 
-/* ---------- split / retreat ---------- */
 async function splitUnit(unitId) {
   const u = (S.units || []).find(x => x.id === unitId);
   if (!u) return;
@@ -655,6 +834,15 @@ async function splitUnit(unitId) {
   if (error) return alert(error.message);
   await refreshNow();
 }
+
+async function mergeGroup(ids) {
+  if (ids.length < 2) return;
+  if (!confirm(`${ids.length} köteg egyesítése?`)) return;
+  const { error } = await sb.rpc('merge_units', { p_unit_ids: ids, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await refreshNow();
+}
+
 async function retreat(battleId) {
   if (!confirm('Visszavonulsz? Az egységeid fele HP-ja elveszik.')) return;
   const { error } = await sb.rpc('retreat_from_battle', { p_battle_id: battleId, p_player: S.actAs });
@@ -662,7 +850,6 @@ async function retreat(battleId) {
   await refreshNow();
 }
 
-/* ---------- status panel ---------- */
 function renderStatus() {
   const el = $('status'); if (!el) return;
   if (S.demo) { el.innerHTML = ''; return; }
@@ -693,13 +880,12 @@ function renderPick() {
       Támadó: <b>${esc(atk?.nation_name || '?')}</b> · Védő: <b>${esc(def?.nation_name || '?')}</b><br>
       Hátralévő: <b data-end="${battleHere.ends_at}">…</b>
       ${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id)
-        ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>`
-        : ''}
+        ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>` : ''}
     </div>`;
   }
 
   const adm = S.profile.is_admin, mine = c.owner_id && (adm || c.owner_id === S.actAs);
-  if (adm) h += `<br>Tulajdonos módosítása: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
+  if (adm) h += `<br>Tulajdonos: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
     S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
 
   if (!S.demo && mine) {
@@ -748,6 +934,18 @@ function renderPick() {
     const countyUnits = (S.units || []).filter(u => u.county_id === c.id);
     if (countyUnits.length) {
       h += `<hr><b>Katonaság</b>`;
+      // Group by unit_type for merge option
+      const myReady = countyUnits.filter(u => u.player_id === S.actAs && u.status === 'ready' && (!u.completes_at || new Date(u.completes_at) <= Date.now()));
+      const groups = {};
+      for (const u of myReady) (groups[u.unit_type] = groups[u.unit_type] || []).push(u);
+      for (const [type, list] of Object.entries(groups)) {
+        if (list.length < 2) continue;
+        const ut = S.unitTypes.find(x => x.key === type);
+        h += `<div class="row" style="margin:4px 0;padding:6px;background:#f0e6d0;border-radius:6px">
+          <span class="grow"><b>${esc(ut?.name || type)}</b>: ${list.length} köteg</span>
+          <button class="btn ghost" onclick="mergeGroup(${JSON.stringify(list.map(x => x.id)).replace(/"/g, "'")})">Összes egyesítése</button>
+        </div>`;
+      }
       for (const u of countyUnits) {
         const ut = S.unitTypes.find(x => x.key === u.unit_type);
         const hpPct = Math.round((u.hp_ratio || 1) * 100);
@@ -803,165 +1001,6 @@ function tick() {
   });
 }
 
-/* ---------- diplomacy modal ---------- */
-function openDiplomacy() {
-  if (S.demo) return alert('Demóban nem.');
-  if (!S.actAs || $('diplo-modal')) return;
-  const others = S.players.filter(p => p.id !== S.actAs);
-  let h = `<div class="modal-backdrop" id="diplo-modal" onclick="if(event.target===this)closeDiplomacy()">
-    <div class="modal">
-      <button class="close" onclick="closeDiplomacy()">✕</button>
-      <h2>📜 Diplomácia</h2>
-      <p style="color:var(--muted);font-size:13px">Állítsd be a viszonyt minden játékoshoz. Társ csak vitézi renden belül lehetséges.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px">
-        <span>⚔ Hadi: <span style="background:#d00000;color:#fff;padding:1px 6px;border-radius:4px">vörös szél</span></span>
-        <span>Semleges: nincs szín</span>
-        <span>🤝 Együttműk.: <span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:4px">zöld szél</span></span>
-        <span>💜 Társ: <span style="background:#6a1b9a;color:#fff;padding:1px 6px;border-radius:4px">lila szél</span></span>
-      </div>
-      <div>`;
-  for (const p of others) {
-    const st = diploStatus(S.actAs, p.id);
-    const stName = DIPLO_NAMES[st] || 'Semleges';
-    const stColor = DIPLO_COLORS[st] || '#888';
-    const inOrder = sameOrder(S.actAs, p.id);
-    h += `<div class="mitem">
-      <div class="row"><b class="grow">${esc(p.nation_name)}</b>
-        <span class="chip" style="background:${stColor || '#888'};color:#fff">${stName}</span>
-        ${inOrder ? '<span class="chip" style="background:#6a1b9a;color:#fff">Rendtag</span>' : ''}
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button class="btn ghost" onclick="setDiplo('${p.id}','war')" ${st==='war'||inOrder?'disabled':''}>⚔ Hadi</button>
-        <button class="btn ghost" onclick="setDiplo('${p.id}','neutral')" ${st==='neutral'||inOrder?'disabled':''}>Semleges</button>
-        <button class="btn ghost" onclick="setDiplo('${p.id}','coop')" ${st==='coop'||inOrder?'disabled':''}>🤝 Együttműk.</button>
-      </div>
-    </div>`;
-  }
-  h += `</div></div></div>`;
-  document.body.insertAdjacentHTML('beforeend', h);
-}
-function closeDiplomacy() { $('diplo-modal')?.remove(); }
-async function setDiplo(targetId, status) {
-  const { error } = await sb.rpc('set_diplomacy', { p_target: targetId, p_status: status, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeDiplomacy(); openDiplomacy();
-}
-
-/* ---------- orders modal ---------- */
-function openOrders() {
-  if (S.demo) return alert('Demóban nem.');
-  if (!S.actAs || $('orders-modal')) return;
-  const myMembership = (S.orderMembers || []).find(m => m.player_id === S.actAs);
-  const myOrder = myMembership ? (S.orders || []).find(o => o.id === myMembership.order_id) : null;
-
-  let h = `<div class="modal-backdrop" id="orders-modal" onclick="if(event.target===this)closeOrders()">
-    <div class="modal">
-      <button class="close" onclick="closeOrders()">✕</button>
-      <h2>🏰 Vitézi rend</h2>`;
-
-  if (!myMembership) {
-    h += `<p>Még nem vagy tagja rendnek. Alapíts újat, vagy jelentkezz egy létezőbe.</p>
-      <div class="mitem">
-        <b>Új rend alapítása</b>
-        <div class="row" style="margin-top:6px">
-          <input id="order-name" placeholder="Rend neve" maxlength="40" class="grow">
-          <button class="btn" onclick="createOrder()">Alapítás</button>
-        </div>
-      </div>`;
-    const activeOrders = (S.orders || []).filter(o => {
-      const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
-      return active.length < 3;
-    });
-    if (activeOrders.length) {
-      h += `<h3>Létező rendek</h3>`;
-      for (const o of activeOrders) {
-        const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
-        const members = active.map(m => {
-          const p = S.players.find(x => x.id === m.player_id);
-          return p ? esc(p.nation_name) : '?';
-        }).join(', ');
-        const pending = (S.orderMembers || []).find(m => m.order_id === o.id && m.player_id === S.actAs && m.status === 'pending');
-        h += `<div class="mitem">
-          <b>${esc(o.name)}</b> <small>(${active.length}/3 tag)</small><br>
-          <small>Tagok: ${members}</small>
-          ${pending
-            ? `<div class="chip" style="background:#ffe;border:1px solid #cc0">⏳ Jelentkezés függőben</div>`
-            : `<button class="btn ghost" onclick="applyOrder('${o.id}')">Jelentkezés</button>`}
-        </div>`;
-      }
-    }
-  } else {
-    const active = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'active');
-    const pending = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'pending');
-    const isFounder = myOrder?.founder_id === S.actAs;
-
-    h += `<h3>${esc(myOrder?.name || '?')}</h3>
-      <p>Tagok (${active.length}/3):</p>`;
-    for (const m of active) {
-      const p = S.players.find(x => x.id === m.player_id);
-      const isMe = m.player_id === S.actAs;
-      h += `<div class="row" style="margin:4px 0;padding:6px;background:#f8f4e8;border-radius:6px">
-        <span class="grow">${esc(p?.nation_name || '?')}${isMe ? ' (te)' : ''}${m.player_id === myOrder?.founder_id ? ' 👑' : ''}</span>
-        ${isFounder && !isMe ? `<button class="btn danger" onclick="kickMember('${m.id}')">Kirúgás</button>` : ''}
-      </div>`;
-    }
-    if (pending.length) {
-      h += `<h3>Jelentkezések</h3>`;
-      for (const m of pending) {
-        const p = S.players.find(x => x.id === m.player_id);
-        h += `<div class="row" style="margin:4px 0;padding:6px;background:#fff5e0;border-radius:6px">
-          <span class="grow">${esc(p?.nation_name || '?')}</span>
-          ${isFounder
-            ? `<button class="btn" onclick="acceptMember('${m.id}')">Elfogad</button>
-               <button class="btn ghost" onclick="declineMember('${m.id}')">Elutasít</button>`
-            : '<span class="chip">várakozik</span>'}
-        </div>`;
-      }
-    }
-    h += `<div class="row" style="margin-top:10px">
-      <button class="btn danger" onclick="leaveOrder('${myMembership.order_id}')">${isFounder ? 'Rend feloszlatása' : 'Kilépés'}</button>
-    </div>`;
-  }
-  h += `</div></div>`;
-  document.body.insertAdjacentHTML('beforeend', h);
-}
-function closeOrders() { $('orders-modal')?.remove(); }
-async function createOrder() {
-  const name = $('order-name')?.value?.trim();
-  if (!name) return alert('Adj nevet.');
-  const { error } = await sb.rpc('create_order', { p_game: S.sel, p_name: name, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-async function applyOrder(orderId) {
-  const { error } = await sb.rpc('apply_to_order', { p_order: orderId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-async function acceptMember(memberId) {
-  const { error } = await sb.rpc('accept_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-async function declineMember(memberId) {
-  const { error } = await sb.rpc('decline_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-async function kickMember(memberId) {
-  if (!confirm('Kirúgod?')) return;
-  const { error } = await sb.rpc('kick_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-async function leaveOrder(orderId) {
-  if (!confirm('Biztosan?')) return;
-  const { error } = await sb.rpc('leave_order', { p_order: orderId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGame(); closeOrders(); openOrders();
-}
-
-/* ---------- piac ---------- */
 async function openMarket() {
   if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('market-backdrop')) return;
@@ -1036,7 +1075,7 @@ function renderMarketMine(me) {
   if (!mine.length) return '<p style="color:var(--muted)">Még nincs hirdetésed.</p>';
   return mine.map(l => {
     const pending = (S.marketOffers || []).filter(o => o.listing_id === l.id && o.status === 'pending');
-    const badge = { open: '🟢 nyitott', done: '✅ kész', cancelled: '⚪ visszavonva' }[l.status] || l.status;
+    const badge = { open:'🟢 nyitott', done:'✅ kész', cancelled:'⚪ visszavonva' }[l.status] || l.status;
     let h = `<div class="mitem">
       <div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>`;
     if (l.status === 'open') h += `<div class="row" style="margin-top:6px"><button class="btn danger" onclick="marketCancel('${l.id}')">Visszavonás</button></div>`;
@@ -1055,7 +1094,7 @@ function renderMarketOffers(me) {
   if (!mine.length) return '<p style="color:var(--muted)">Még nincs ajánlatod.</p>';
   return mine.map(o => {
     const l = (S.marketListings || []).find(x => x.id === o.listing_id);
-    const st = { pending: '⏳ függő', accepted: '✅ elfogadva', declined: '❌ elutasítva', withdrawn: '⚪ visszavonva' }[o.status] || o.status;
+    const st = { pending:'⏳ függő', accepted:'✅ elfogadva', declined:'❌ elutasítva', withdrawn:'⚪ visszavonva' }[o.status] || o.status;
     return `<div class="mitem">
       <div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt)'}</b><span class="chip">${st}</span></div>
       <div style="font-size:13px">Adok: <b>${o.give_amount}× ${resName(o.give_resource)}</b> · Kapok: <b>${o.get_amount}× ${resName(o.get_resource)}</b></div>
@@ -1099,6 +1138,145 @@ async function marketDecide(oid, accept) {
   const { error } = await sb.rpc('market_decide', { p_offer: oid, p_accept: accept });
   if (error) return alert(error.message);
   await loadMarketAndRender(); await refreshNow();
+}
+
+function openDiplomacy() {
+  if (S.demo) return alert('Demóban nem.');
+  if (!S.actAs || $('diplo-modal')) return;
+  const others = S.players.filter(p => p.id !== S.actAs);
+  let h = `<div class="modal-backdrop" id="diplo-modal" onclick="if(event.target===this)closeDiplomacy()">
+    <div class="modal">
+      <button class="close" onclick="closeDiplomacy()">✕</button>
+      <h2>📜 Diplomácia</h2>
+      <p style="color:var(--muted);font-size:13px">Társ csak vitézi renden belül lehetséges.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px">
+        <span>⚔ Hadi: <span style="background:#d00000;color:#fff;padding:1px 6px;border-radius:4px">vörös</span></span>
+        <span>Semleges: nincs szín</span>
+        <span>🤝 Együttműk.: <span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:4px">zöld</span></span>
+        <span>💜 Társ: <span style="background:#6a1b9a;color:#fff;padding:1px 6px;border-radius:4px">lila</span></span>
+      </div><div>`;
+  for (const p of others) {
+    const st = diploStatus(S.actAs, p.id);
+    const stName = DIPLO_NAMES[st] || 'Semleges';
+    const stColor = DIPLO_COLORS[st] || '#888';
+    const inOrder = sameOrder(S.actAs, p.id);
+    h += `<div class="mitem">
+      <div class="row"><b class="grow">${esc(p.nation_name)}</b>
+        <span class="chip" style="background:${stColor || '#888'};color:#fff">${stName}</span>
+        ${inOrder ? '<span class="chip" style="background:#6a1b9a;color:#fff">Rendtag</span>' : ''}
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" onclick="setDiplo('${p.id}','war')" ${st==='war'||inOrder?'disabled':''}>⚔ Hadi</button>
+        <button class="btn ghost" onclick="setDiplo('${p.id}','neutral')" ${st==='neutral'||inOrder?'disabled':''}>Semleges</button>
+        <button class="btn ghost" onclick="setDiplo('${p.id}','coop')" ${st==='coop'||inOrder?'disabled':''}>🤝 Együttműk.</button>
+      </div>
+    </div>`;
+  }
+  h += `</div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeDiplomacy() { $('diplo-modal')?.remove(); }
+async function setDiplo(targetId, status) {
+  const { error } = await sb.rpc('set_diplomacy', { p_target: targetId, p_status: status, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeDiplomacy(); openDiplomacy();
+}
+
+function openOrders() {
+  if (S.demo) return alert('Demóban nem.');
+  if (!S.actAs || $('orders-modal')) return;
+  const myMembership = (S.orderMembers || []).find(m => m.player_id === S.actAs);
+  const myOrder = myMembership ? (S.orders || []).find(o => o.id === myMembership.order_id) : null;
+  let h = `<div class="modal-backdrop" id="orders-modal" onclick="if(event.target===this)closeOrders()">
+    <div class="modal"><button class="close" onclick="closeOrders()">✕</button>
+      <h2>🏰 Vitézi rend</h2>`;
+  if (!myMembership) {
+    h += `<p>Még nem vagy tagja rendnek.</p>
+      <div class="mitem">
+        <b>Új rend alapítása</b>
+        <div class="row" style="margin-top:6px">
+          <input id="order-name" placeholder="Rend neve" maxlength="40" class="grow">
+          <button class="btn" onclick="createOrder()">Alapítás</button>
+        </div>
+      </div>`;
+    const activeOrders = (S.orders || []).filter(o => (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active').length < 3);
+    if (activeOrders.length) {
+      h += `<h3>Létező rendek</h3>`;
+      for (const o of activeOrders) {
+        const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
+        const members = active.map(m => { const p = S.players.find(x => x.id === m.player_id); return p ? esc(p.nation_name) : '?'; }).join(', ');
+        const pending = (S.orderMembers || []).find(m => m.order_id === o.id && m.player_id === S.actAs && m.status === 'pending');
+        h += `<div class="mitem">
+          <b>${esc(o.name)}</b> <small>(${active.length}/3 tag)</small><br>
+          <small>Tagok: ${members}</small>
+          ${pending ? `<div class="chip" style="background:#ffe;border:1px solid #cc0">⏳ Jelentkezés függőben</div>`
+            : `<button class="btn ghost" onclick="applyOrder('${o.id}')">Jelentkezés</button>`}
+        </div>`;
+      }
+    }
+  } else {
+    const active = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'active');
+    const pending = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'pending');
+    const isFounder = myOrder?.founder_id === S.actAs;
+    h += `<h3>${esc(myOrder?.name || '?')}</h3><p>Tagok (${active.length}/3):</p>`;
+    for (const m of active) {
+      const p = S.players.find(x => x.id === m.player_id);
+      const isMe = m.player_id === S.actAs;
+      h += `<div class="row" style="margin:4px 0;padding:6px;background:#f8f4e8;border-radius:6px">
+        <span class="grow">${esc(p?.nation_name || '?')}${isMe ? ' (te)' : ''}${m.player_id === myOrder?.founder_id ? ' 👑' : ''}</span>
+        ${isFounder && !isMe ? `<button class="btn danger" onclick="kickMember('${m.id}')">Kirúgás</button>` : ''}
+      </div>`;
+    }
+    if (pending.length) {
+      h += `<h3>Jelentkezések</h3>`;
+      for (const m of pending) {
+        const p = S.players.find(x => x.id === m.player_id);
+        h += `<div class="row" style="margin:4px 0;padding:6px;background:#fff5e0;border-radius:6px">
+          <span class="grow">${esc(p?.nation_name || '?')}</span>
+          ${isFounder ? `<button class="btn" onclick="acceptMember('${m.id}')">Elfogad</button>
+               <button class="btn ghost" onclick="declineMember('${m.id}')">Elutasít</button>` : '<span class="chip">várakozik</span>'}
+        </div>`;
+      }
+    }
+    h += `<div class="row" style="margin-top:10px"><button class="btn danger" onclick="leaveOrder('${myMembership.order_id}')">${isFounder ? 'Rend feloszlatása' : 'Kilépés'}</button></div>`;
+  }
+  h += `</div></div>`;
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeOrders() { $('orders-modal')?.remove(); }
+async function createOrder() {
+  const name = $('order-name')?.value?.trim();
+  if (!name) return alert('Adj nevet.');
+  const { error } = await sb.rpc('create_order', { p_game: S.sel, p_name: name, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
+}
+async function applyOrder(orderId) {
+  const { error } = await sb.rpc('apply_to_order', { p_order: orderId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
+}
+async function acceptMember(memberId) {
+  const { error } = await sb.rpc('accept_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
+}
+async function declineMember(memberId) {
+  const { error } = await sb.rpc('decline_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
+}
+async function kickMember(memberId) {
+  if (!confirm('Kirúgod?')) return;
+  const { error } = await sb.rpc('kick_order_member', { p_member: memberId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
+}
+async function leaveOrder(orderId) {
+  if (!confirm('Biztosan?')) return;
+  const { error } = await sb.rpc('leave_order', { p_order: orderId, p_player: S.actAs });
+  if (error) return alert(error.message);
+  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
 }
 
 setInterval(tick, 1000);
