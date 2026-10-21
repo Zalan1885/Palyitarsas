@@ -69,6 +69,8 @@
   .units{pointer-events:none}
   .unit-chip{display:inline-flex;align-items:center;gap:3px;background:#fff;border:1px solid #ccc;border-radius:8px;padding:4px 8px;cursor:pointer;user-select:none}
   .unit-chip.on{background:#e8f5e9;border-color:var(--ok)}
+  .player-chip{cursor:pointer;transition:filter .15s}
+  .player-chip:hover{filter:brightness(.95)}
   @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
@@ -150,44 +152,38 @@ const BICON = { 'laktanya':'svg/gyar.svg','barracks':'svg/gyar.svg','gyar':'svg/
 const UNIT_ICONS = { puskas:'svg/puskas.svg', agyus:'svg/agyus.svg' };
 const DIPLO_COLORS = { war:'#d00000', neutral:null, coop:'#1b5e20', ally:'#6a1b9a' };
 const DIPLO_NAMES = { war:'Hadi', neutral:'Semleges', coop:'Együttműk.', ally:'Társ' };
+const SCORE_RULES = {
+  county_owned: 5, county_from_player: 8, county_from_unowned: 3,
+  varos: 2, var: 3, laktanya: 4,
+  puskas_alive: 5, agyus_alive: 8,
+  puskas_kill: 6, agyus_kill: 9
+};
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const slug = u => u.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
 const toEmail = u => u.includes('@') ? u.trim() : slug(u.trim()) + '@' + EMAIL_DOMAIN;
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,24}$/u;
-let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null, notifications:[], notifOpen:false, snap:null, _lastActAs:null, _lastSel:null, _notifKey:null};
+let S = {user:null, profile:{}, games:[], mySeats:{}, sel:null, players:[], counties:[], byName:{}, btypes:{}, offices:[], defs:[], joinGame:null, pickOffice:null, taken:[], msg:'', ch:null, demo:false, prod:[], prodAt:0, res:{}, mp:null, mpAt:0, actAs:null, picked:null, btAll:[], fin:{}, marketListings:[], marketOffers:[], marketTab:'browse', unitTypes:[], units:[], battles:[], movements:[], diplomacy:[], orders:[], orderMembers:[], actionMode:null, actionPhase:null, selectedUnits:[], actionSource:null, actionSourceName:null, actionTarget:null, hoverTarget:null, pickTimeout:null, notifications:[], notifOpen:false, snap:null, _lastActAs:null, _lastSel:null, _notifKey:null, scores:null, scoresAt:0, statsCache:{}};
 let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {};
 
 /* ============ ÉRTESÍTÉSEK ============ */
 const NOTIF_MAX = 100;
 function notifKey() { return 'palyi_notifs_' + (S.sel||'') + '_' + (S.actAs||''); }
 function notifLoad() {
-  try {
-    const raw = localStorage.getItem(notifKey());
-    const arr = raw ? JSON.parse(raw) : [];
-    S.notifications = Array.isArray(arr) ? arr : [];
-  } catch(e) { S.notifications = []; }
+  try { const raw = localStorage.getItem(notifKey()); const arr = raw ? JSON.parse(raw) : []; S.notifications = Array.isArray(arr) ? arr : []; } catch(e) { S.notifications = []; }
 }
 function notifSave() {
-  try {
-    S.notifications = S.notifications.slice(0, NOTIF_MAX);
-    localStorage.setItem(notifKey(), JSON.stringify(S.notifications));
-  } catch(e) {}
+  try { S.notifications = S.notifications.slice(0, NOTIF_MAX); localStorage.setItem(notifKey(), JSON.stringify(S.notifications)); } catch(e) {}
 }
 function notifPush(type, title, msg) {
   if (S.demo || !S.actAs) return;
-  S.notifications.unshift({
-    id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    ts: Date.now(), type, title, msg, read: false
-  });
-  notifSave();
-  notifUpdateBadge();
+  S.notifications.unshift({ id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,8), ts: Date.now(), type, title, msg, read: false });
+  notifSave(); notifUpdateBadge();
   if (S.notifOpen) renderNotifModal();
 }
 function notifUpdateBadge() {
-  const badge = $('notif-badge');
-  if (!badge) return;
+  const badge = $('notif-badge'); if (!badge) return;
   const unread = (S.notifications || []).filter(n => !n.read).length;
   if (unread === 0 || S.notifOpen) { badge.style.display = 'none'; return; }
   badge.style.display = 'inline-block';
@@ -197,68 +193,30 @@ function openNotifs() {
   if (S.demo || !S.actAs) return;
   if ($('notif-modal')) return;
   S.notifOpen = true;
-  document.body.insertAdjacentHTML('beforeend', `
-    <div class="modal-backdrop" id="notif-modal" onclick="if(event.target===this)closeNotifs()">
-      <div class="modal" style="max-width:640px">
-        <button class="close" onclick="closeNotifs()">✕</button>
-        <h2>🔔 Értesítések</h2>
-        <div class="row" style="margin-bottom:8px">
-          <button class="btn ghost" onclick="markAllNotifsRead()">Összes olvasott</button>
-          <button class="btn ghost" onclick="clearNotifs()">Összes törlése</button>
-        </div>
-        <div id="notif-content"></div>
-      </div>
-    </div>`);
-  renderNotifModal();
-  notifUpdateBadge();
-  setTimeout(() => {
-    if (!S.notifOpen) return;
-    (S.notifications || []).forEach(n => n.read = true);
-    notifSave(); notifUpdateBadge();
-  }, 2000);
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="notif-modal" onclick="if(event.target===this)closeNotifs()"><div class="modal" style="max-width:640px"><button class="close" onclick="closeNotifs()">✕</button><h2>🔔 Értesítések</h2><div class="row" style="margin-bottom:8px"><button class="btn ghost" onclick="markAllNotifsRead()">Összes olvasott</button><button class="btn ghost" onclick="clearNotifs()">Összes törlése</button></div><div id="notif-content"></div></div></div>`);
+  renderNotifModal(); notifUpdateBadge();
+  setTimeout(() => { if (!S.notifOpen) return; (S.notifications || []).forEach(n => n.read = true); notifSave(); notifUpdateBadge(); }, 2000);
 }
-function closeNotifs() {
-  S.notifOpen = false;
-  $('notif-modal')?.remove();
-  (S.notifications || []).forEach(n => n.read = true);
-  notifSave(); notifUpdateBadge();
-}
-function renderNotifModal() {
-  const el = $('notif-content'); if (!el) return;
-  el.innerHTML = renderNotifs();
-}
+function closeNotifs() { S.notifOpen = false; $('notif-modal')?.remove(); (S.notifications || []).forEach(n => n.read = true); notifSave(); notifUpdateBadge(); }
+function renderNotifModal() { const el = $('notif-content'); if (!el) return; el.innerHTML = renderNotifs(); }
 function renderNotifs() {
-  if (!S.notifications || !S.notifications.length) {
-    return '<p style="color:var(--muted);text-align:center;padding:20px">Nincs értesítés.</p>';
-  }
+  if (!S.notifications || !S.notifications.length) return '<p style="color:var(--muted);text-align:center;padding:20px">Nincs értesítés.</p>';
   const now = Date.now();
   return S.notifications.map(n => {
     const sec = Math.floor((now - n.ts) / 1000);
     const timeStr = sec < 60 ? 'most' : sec < 3600 ? Math.floor(sec/60)+'p' : sec < 86400 ? Math.floor(sec/3600)+'ó' : Math.floor(sec/86400)+'n';
     const bg = n.read ? '' : 'background:#fffbe6;border-color:#f0c000';
-    return `<div class="mitem" style="${bg}">
-      <div class="row"><b class="grow">${esc(n.title)}</b>
-        <small style="color:var(--muted)">${timeStr}</small></div>
-      <div style="font-size:13px">${esc(n.msg)}</div>
-    </div>`;
+    return `<div class="mitem" style="${bg}"><div class="row"><b class="grow">${esc(n.title)}</b><small style="color:var(--muted)">${timeStr}</small></div><div style="font-size:13px">${esc(n.msg)}</div></div>`;
   }).join('');
 }
-function markAllNotifsRead() {
-  (S.notifications || []).forEach(n => n.read = true);
-  notifSave(); notifUpdateBadge(); renderNotifModal();
-}
-function clearNotifs() {
-  if (!confirm('Biztosan törlöd az összes értesítést?')) return;
-  S.notifications = [];
-  notifSave(); notifUpdateBadge(); renderNotifModal();
-}
+function markAllNotifsRead() { (S.notifications || []).forEach(n => n.read = true); notifSave(); notifUpdateBadge(); renderNotifModal(); }
+function clearNotifs() { if (!confirm('Biztosan törlöd az összes értesítést?')) return; S.notifications = []; notifSave(); notifUpdateBadge(); renderNotifModal(); }
 
-/* --- Detekció --- */
+/* ============ DETEKCIÓ ============ */
 function _unitName(k) { return S.unitTypes.find(x => x.key === k)?.name || k; }
 function _countyName(id) { return S.counties.find(c => c.id === id)?.county_definitions.name || '?'; }
 function _nation(id) { return S.players.find(p => p.id === id)?.nation_name || '?'; }
 function _resN(k) { return RES[k] || k; }
-
 function snapOf() {
   return {
     units: Object.fromEntries((S.units||[]).map(u => [u.id, { amount:u.amount, status:u.status, hp_ratio:u.hp_ratio, completes_at:u.completes_at, player_id:u.player_id, county_id:u.county_id, unit_type:u.unit_type }])),
@@ -272,49 +230,31 @@ function snapOf() {
 }
 function detectNotifications(prev) {
   if (!prev) return;
-  const me = S.actAs;
-  if (!me) return;
+  const me = S.actAs; if (!me) return;
   for (const o of (S.marketOffers || [])) {
     if (o.status !== 'pending' || o.author_id !== me || o.bidder_id === me) continue;
-    if (!prev.offers[o.id]) {
-      notifPush('market_offer', '🏪 Új ajánlat',
-        `${_nation(o.bidder_id)} ajánl: ${o.give_amount}× ${_resN(o.give_resource)} ↔ ${o.get_amount}× ${_resN(o.get_resource)}`);
-    }
+    if (!prev.offers[o.id]) notifPush('market_offer', '🏪 Új ajánlat', `${_nation(o.bidder_id)} ajánl: ${o.give_amount}× ${_resN(o.give_resource)} ↔ ${o.get_amount}× ${_resN(o.get_resource)}`);
   }
   for (const o of (S.marketOffers || [])) {
     if (o.bidder_id !== me) continue;
     const p = prev.offers[o.id]; if (!p) continue;
-    if (p.status === 'pending' && o.status === 'accepted') {
-      notifPush('market_accept', '✅ Ajánlatodat elfogadták',
-        `Kapsz: ${o.get_amount}× ${_resN(o.get_resource)} · Adsz: ${o.give_amount}× ${_resN(o.give_resource)}`);
-    } else if (p.status === 'pending' && o.status === 'declined') {
-      notifPush('market_decline', '❌ Ajánlatodat elutasították',
-        `Visszakapod: ${o.give_amount}× ${_resN(o.give_resource)}`);
-    }
+    if (p.status === 'pending' && o.status === 'accepted') notifPush('market_accept', '✅ Ajánlatodat elfogadták', `Kapsz: ${o.get_amount}× ${_resN(o.get_resource)} · Adsz: ${o.give_amount}× ${_resN(o.give_resource)}`);
+    else if (p.status === 'pending' && o.status === 'declined') notifPush('market_decline', '❌ Ajánlatodat elutasították', `Visszakapod: ${o.give_amount}× ${_resN(o.give_resource)}`);
   }
   for (const b of (S.battles || [])) {
     if (b.attacker_id !== me && b.defender_id !== me) continue;
     if (!prev.battles[b.id]) {
-      if (b.attacker_id === me) {
-        notifPush('battle_start_atk', '⚔ Támadás indult',
-          `Megtámadtad ${_countyName(b.county_id)} vármegyét (${_nation(b.defender_id)})`);
-      } else {
-        notifPush('battle_start_def', '🛡 Támadás ért!',
-          `${_nation(b.attacker_id)} megtámadta ${_countyName(b.county_id)} vármegyédet!`);
-      }
+      if (b.attacker_id === me) notifPush('battle_start_atk', '⚔ Támadás indult', `Megtámadtad ${_countyName(b.county_id)} vármegyét (${_nation(b.defender_id)})`);
+      else notifPush('battle_start_def', '🛡 Támadás ért!', `${_nation(b.attacker_id)} megtámadta ${_countyName(b.county_id)} vármegyédet!`);
     }
   }
   for (const bid in prev.battles) {
     const pb = prev.battles[bid];
     if (S.battles.some(b => b.id === bid)) continue;
-    const c = S.counties.find(x => x.id === pb.county_id);
-    if (!c) continue;
+    const c = S.counties.find(x => x.id === pb.county_id); if (!c) continue;
     const won = c.owner_id === me;
-    if (pb.attacker_id === me && !won) {
-      notifPush('battle_lost_atk', '❌ Vereség', `Nem sikerült bevenni: ${_countyName(pb.county_id)}`);
-    } else if (pb.defender_id === me && won) {
-      notifPush('battle_won_def', '🛡 Védtél!', `Megtartottad: ${_countyName(pb.county_id)}`);
-    }
+    if (pb.attacker_id === me && !won) notifPush('battle_lost_atk', '❌ Vereség', `Nem sikerült bevenni: ${_countyName(pb.county_id)}`);
+    else if (pb.defender_id === me && won) notifPush('battle_won_def', '🛡 Védtél!', `Megtartottad: ${_countyName(pb.county_id)}`);
     const myBefore = Object.values(prev.units).filter(u => u.player_id === me && u.county_id === pb.county_id);
     const myAfter = (S.units || []).filter(u => u.player_id === me && u.county_id === pb.county_id);
     const lost = myBefore.reduce((s,u) => s+u.amount, 0) - myAfter.reduce((s,u) => s+u.amount, 0);
@@ -329,16 +269,13 @@ function detectNotifications(prev) {
     if (!wasMine && isMine) notifPush('county_gain', '🏰 Új vármegye', `Elfoglaltad: ${c.county_definitions.name}`);
     else if (wasMine && !isMine) {
       const newOwner = S.players.find(x => x.id === c.owner_id);
-      notifPush('county_lost', '⚠ Vármegye elveszett',
-        `${c.county_definitions.name}${newOwner ? ' → ' + newOwner.nation_name : ''}`);
+      notifPush('county_lost', '⚠ Vármegye elveszett', `${c.county_definitions.name}${newOwner ? ' → ' + newOwner.nation_name : ''}`);
     }
   }
   for (const u of (S.units || [])) {
     if (u.player_id !== me) continue;
     const p = prev.units[u.id]; if (!p) continue;
-    if (p.status === 'training' && u.status === 'ready') {
-      notifPush('recruit_done', '👥 Kiképzés kész', `${u.amount}× ${_unitName(u.unit_type)} kész`);
-    }
+    if (p.status === 'training' && u.status === 'ready') notifPush('recruit_done', '👥 Kiképzés kész', `${u.amount}× ${_unitName(u.unit_type)} kész`);
   }
   for (const d of (S.diplomacy || [])) {
     if (d.player_a !== me && d.player_b !== me) continue;
@@ -379,7 +316,6 @@ function sameOrder(a, b) {
   const mb = (S.orderMembers||[]).find(m => m.player_id === b && m.status === 'active');
   return ma && mb && ma.order_id === mb.order_id;
 }
-/* ÚJ: rendtag mindig ally, függetlenül a diplomacy táblától */
 function diploStatus(a, b) {
   if (!a || !b || a === b) return 'self';
   if (sameOrder(a, b)) return 'ally';
@@ -388,19 +324,9 @@ function diploStatus(a, b) {
   return rec?.status || 'neutral';
 }
 function ownerDiplo(ownerId) { return !ownerId ? 'unowned' : ownerId === S.actAs ? 'self' : diploStatus(S.actAs, ownerId); }
-function imgFallback(img) {
-  const span = document.createElement('span');
-  span.style.cssText = 'display:inline-block;width:10px;height:10px;background:#888;border:1px solid #222;box-sizing:border-box;';
-  img.replaceWith(span);
-}
-function getSourceUnits() {
-  if (!S.actionSource) return [];
-  return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
-}
-function isAdjacentByName(a, b) {
-  if (!a || !b) return false;
-  return (ADJ[a]?.has(b)) || (ADJ[b]?.has(a)) || false;
-}
+function imgFallback(img) { const span = document.createElement('span'); span.style.cssText = 'display:inline-block;width:10px;height:10px;background:#888;border:1px solid #222;box-sizing:border-box;'; img.replaceWith(span); }
+function getSourceUnits() { if (!S.actionSource) return []; return (S.units||[]).filter(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u)); }
+function isAdjacentByName(a, b) { if (!a || !b) return false; return (ADJ[a]?.has(b)) || (ADJ[b]?.has(a)) || false; }
 function adjacentToSource(countyName) {
   if (!S.actionSource) return false;
   const srcC = S.counties.find(c => c.id === S.actionSource);
@@ -408,13 +334,9 @@ function adjacentToSource(countyName) {
   return isAdjacentByName(srcC.county_definitions.name, countyName);
 }
 function visibleMovements() {
-  return (S.movements || []).filter(m =>
-    m.status === 'marching' &&
-    (m.player_id === S.actAs || diploStatus(S.actAs, m.player_id) === 'ally'));
+  return (S.movements || []).filter(m => m.status === 'marching' && (m.player_id === S.actAs || diploStatus(S.actAs, m.player_id) === 'ally'));
 }
-function incomingTo(countyId) {
-  return visibleMovements().filter(m => m.to_county === countyId);
-}
+function incomingTo(countyId) { return visibleMovements().filter(m => m.to_county === countyId); }
 
 async function boot() {
   const { data:{ session } } = await sb.auth.getSession();
@@ -468,8 +390,7 @@ function renderAuth(force) {
     <div class="offs">${offs.map(o => `<span><span class="dot" style="background:${o.color}"></span> ${esc(o.name)}</span>`).join('')}</div></div>
     <div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div>
     <label class="field"><span>Felhasználónév</span><input id="un" autocomplete="off" maxlength="24" oninput="checkName()"></label><div id="nhint" class="hint"></div>
-    <label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" >
-      <button class="btn ghost eye" type="button" onclick="togglePw()">🙈 Takar</button></div></label>
+    <label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" ><button class="btn ghost eye" type="button" onclick="togglePw()">🙈 Takar</button></div></label>
     ${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" ></label>` : ''}
     <button id="go" class="btn" style="width:100%;margin-top:6px" onclick="submitAuth()">${reg ? 'Fiók létrehozása' : 'Belépés'}</button>
     <p id="amsg" class="hint"></p>
@@ -513,14 +434,12 @@ async function submitAuth() {
     }
   } catch (e) { setMsg(huErr(e.message)); btn.disabled = false; }
 }
-/* JAVÍTVA: csatorna cleanup */
 const logout = () => {
   S.sel = null;
   if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} S.ch = null; }
   if (S.demo) { S.demo = false; S.games = []; return renderAuth(); }
   sb.auth.signOut();
 };
-
 function renderAccount() {
   $('app').innerHTML = header() + `<main><div class="card" style="max-width:420px"><h2>Jelszó módosítása</h2>
     <label class="field"><span>Új jelszó</span><input id="np" type="text" autocomplete="off" style="width:100%"></label>
@@ -564,7 +483,7 @@ function renderList() {
   h += `<h2>Játékok</h2>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="games">` + (list.map(g => {
     const mine = S.mySeats[g.id], oname = S.offices.find(o => o.key === mine)?.name;
     return `<div class="game"><div class="row"><b class="grow">${esc(g.name)}</b><span class="badge ${g.status}">${ST[g.status]}</span></div>
-      <div style="color:var(--muted);margin:4px 0 8px">Sebesség ×${g.speed_multiplier}${mine ? ' · ' + esc(oname) : ''}</div>` +
+      <div style="color:var(--muted);margin:4px 0 8px">Sebesség ×${g.speed_multiplier}${mine ? ' · ' + esc(oname) : ''}${g.target_score ? ' · 🎯 ' + g.target_score : ''}${g.winner_player_id || g.winner_order_id ? ' · 🏆' : ''}</div>` +
       (adm || mine ? `<button class="btn" onclick="openGame('${g.id}')">Megnyitás</button>`
         : g.status !== 'finished' ? `<button class="btn" onclick="startJoin('${g.id}')">Csatlakozás</button>` : '') + `</div>`; }).join('')
     || '<p>Még nincs játék.</p>') + '</div></main>';
@@ -573,10 +492,11 @@ function renderList() {
 async function createGame() {
   if (S.demo) return openGame('demo');
   const name = $('gn').value.trim(); if (!name) { S.msg = 'Adj nevet'; return renderList(); }
-  const test = $('gt').checked;
-  const { data, error } = await sb.rpc('admin_create_game', { p_name:name, p_speed:Number($('gs').value) || 1, p_victory_points:$('gv').value ? Number($('gv').value) : null });
+  const test = $('gt').checked, target = $('gv').value ? Number($('gv').value) : null;
+  const { data, error } = await sb.rpc('admin_create_game', { p_name:name, p_speed:Number($('gs').value) || 1, p_victory_points:target });
   if (error) { S.msg = error.message; return renderList(); }
   if (test) { const r = await sb.rpc('admin_seed_offices', { p_game:data }); if (r.error) S.msg = r.error.message; }
+  if (target) { try { await sb.rpc('admin_set_target', { p_game:data, p_target:target }); } catch(e){} }
   await loadGames(); await openGame(data);
 }
 
@@ -599,18 +519,16 @@ async function doJoin() {
 
 async function loadState() {
   if (S.demo) return;
-  const _prevSnap = S.snap;
-  const _prevActAs = S._lastActAs;
-  const _prevSel = S._lastSel;
+  const _prevSnap = S.snap, _prevActAs = S._lastActAs, _prevSel = S._lastSel;
   const [p, c] = await Promise.all([
     sb.from('game_players').select('id,office,nation_name,color,profile_id').eq('game_id', S.sel),
-    sb.from('counties').select('id,owner_id,definition_id').eq('game_id', S.sel)]);
+    sb.from('counties').select('id,owner_id,definition_id,capture_bonus').eq('game_id', S.sel)]);
   S.msg = p.error?.message || c.error?.message || '';
   const ids = (c.data || []).map(x => x.id), pids = (p.data || []).map(x => x.profile_id).filter(Boolean);
   S.players = (p.data || []).map(x => ({ ...x, profiles:null }));
   if (S.profile.is_admin) { if (!S.players.some(x => x.id === S.actAs)) S.actAs = S.players[0]?.id || null; }
   else S.actAs = S.players.find(x => x.profile_id === S.user.id)?.id || null;
-  const [b, pr, pd, rs, mp, un, bt, mv, dip, ord] = await Promise.all([
+  const [b, pr, pd, rs, mp, un, bt, mv, dip, ord, sc] = await Promise.all([
     ids.length ? sb.from('buildings').select('county_id,building_type,level,status,completes_at').in('county_id', ids) : { data:[] },
     pids.length ? sb.from('profiles').select('id,username').in('id', pids) : { data:[] },
     sb.from('county_production').select('county_id,owner_id,resource,rate_per_hour,cap_amount,current_amount').eq('game_id', S.sel),
@@ -620,7 +538,8 @@ async function loadState() {
     sb.from('battles').select('*').eq('game_id', S.sel).eq('status','active').then(x => x.error ? { data:[] } : x),
     sb.from('army_movements').select('*').eq('game_id', S.sel).eq('status','marching').then(x => x.error ? { data:[] } : x),
     sb.from('diplomacy').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x),
-    sb.from('orders').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x)]);
+    sb.from('orders').select('*').eq('game_id', S.sel).then(x => x.error ? { data:[] } : x),
+    sb.rpc('get_game_scores', { p_game: S.sel }).then(x => x.error ? { data:null } : x)]);
   const names = Object.fromEntries((pr.data || []).map(x => [x.id, x.username]));
   S.players = S.players.map(x => ({ ...x, profiles: x.profile_id ? { username:names[x.profile_id] } : null }));
   S.prod = pd.data || []; S.prodAt = Date.now();
@@ -631,6 +550,8 @@ async function loadState() {
   S.movements = mv.data || [];
   S.diplomacy = dip.data || [];
   S.orders = ord.data || [];
+  S.scores = sc?.data || null;
+  S.scoresAt = Date.now();
   if (S.orders.length) {
     const ordm = await sb.from('order_members').select('*').in('order_id', S.orders.map(o => o.id));
     S.orderMembers = ordm.data || [];
@@ -640,7 +561,7 @@ async function loadState() {
     S.selectedUnits = S.selectedUnits.filter(id => validIds.has(id));
   }
   const defs = Object.fromEntries((S.defs || []).map(d => [d.id, d]));
-  S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id,
+  S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id, capture_bonus: x.capture_bonus || 0,
     county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] },
     buildings:(b.data || []).filter(y => y.county_id === x.id) }));
   if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket.';
@@ -663,7 +584,7 @@ async function openGame(id) {
   if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} }
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
   S.ch = sb.channel('g' + id);
-  ['counties','buildings','game_players','player_resources','player_units','battles','army_movements','diplomacy','orders','order_members'].forEach(tb =>
+  ['counties','buildings','game_players','player_resources','player_units','battles','army_movements','diplomacy','orders','order_members','player_stats'].forEach(tb =>
     S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
   S.ch.subscribe();
 }
@@ -680,6 +601,170 @@ async function delGame() {
   S.msg = error?.message || ''; await loadGames(); renderList();
 }
 
+/* ============ ADMIN CÉL / GYŐZTES ============ */
+function openTargetModal() {
+  if (!S.profile.is_admin) return;
+  const g = S.games.find(x => x.id === S.sel); if (!g) return;
+  if ($('target-modal')) return;
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="target-modal" onclick="if(event.target===this)closeTargetModal()">
+    <div class="modal" style="max-width:400px"><button class="close" onclick="closeTargetModal()">✕</button>
+      <h2>🎯 Cél pontszám</h2>
+      <p style="color:var(--muted);font-size:13px">Ha be van állítva, a játékosok látják a fejlécben. Állítsd 0-ra a törléshez.</p>
+      <div class="row">
+        <input type="number" id="target-score-input" min="0" value="${g.target_score || 0}" class="grow">
+        <button class="btn" onclick="saveTarget()">Mentés</button>
+      </div>
+    </div></div>`);
+}
+function closeTargetModal() { $('target-modal')?.remove(); }
+async function saveTarget() {
+  const v = Number($('target-score-input')?.value) || 0;
+  const { error } = await sb.rpc('admin_set_target', { p_game: S.sel, p_target: v });
+  if (error) return alert(error.message);
+  closeTargetModal();
+  await loadGames(); renderGame();
+}
+
+function openWinnerModal() {
+  if (!S.profile.is_admin) return;
+  if ($('winner-modal')) return;
+  const g = S.games.find(x => x.id === S.sel); if (!g) return;
+  const curPlayer = g.winner_player_id;
+  const curOrder = g.winner_order_id;
+  let curType = curPlayer ? 'player' : curOrder ? 'order' : '';
+  let curId = curPlayer || curOrder || '';
+  const playerOpts = S.players.map(p => `<option value="${p.id}" ${curId === p.id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('');
+  const orderOpts = S.orders.map(o => `<option value="${o.id}" ${curId === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="winner-modal" onclick="if(event.target===this)closeWinnerModal()">
+    <div class="modal" style="max-width:500px"><button class="close" onclick="closeWinnerModal()">✕</button>
+      <h2>🏆 Győztes kihirdetése</h2>
+      <p style="color:var(--muted);font-size:13px">Ha rendet hirdetsz ki, minden tagja nyertesnek számít a statisztikában.</p>
+      <div class="row">
+        <label><input type="radio" name="win-type" value="player" ${curType === 'player' || !curType ? 'checked' : ''} onchange="updateWinnerForm()"> Játékos</label>
+        <label><input type="radio" name="win-type" value="order" ${curType === 'order' ? 'checked' : ''} onchange="updateWinnerForm()"> Vitézi rend</label>
+      </div>
+      <div id="winner-form" style="margin-top:10px">
+        <select id="winner-player" style="width:100%">${playerOpts || '<option value="">– nincs játékos –</option>'}</select>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" onclick="saveWinner()">Kihirdetés</button>
+        <button class="btn ghost" onclick="clearWinner()">Győztes törlése</button>
+      </div>
+    </div></div>`);
+  window._winnerOrderOpts = orderOpts || '<option value="">– nincs rend –</option>';
+}
+function updateWinnerForm() {
+  const t = document.querySelector('input[name="win-type"]:checked')?.value;
+  const el = $('winner-form');
+  if (!el) return;
+  if (t === 'order') el.innerHTML = `<select id="winner-order" style="width:100%">${window._winnerOrderOpts}</select>`;
+  else {
+    const opts = S.players.map(p => `<option value="${p.id}">${esc(p.nation_name)}</option>`).join('');
+    el.innerHTML = `<select id="winner-player" style="width:100%">${opts || '<option value="">– nincs játékos –</option>'}</select>`;
+  }
+}
+function closeWinnerModal() { $('winner-modal')?.remove(); }
+async function saveWinner() {
+  const t = document.querySelector('input[name="win-type"]:checked')?.value;
+  const pPlayer = t === 'player' ? ($('winner-player')?.value || null) : null;
+  const pOrder = t === 'order' ? ($('winner-order')?.value || null) : null;
+  if (!pPlayer && !pOrder) return alert('Válassz győztest.');
+  const { error } = await sb.rpc('admin_set_winner', { p_game: S.sel, p_player: pPlayer, p_order: pOrder });
+  if (error) return alert(error.message);
+  closeWinnerModal();
+  await loadGames(); renderGame();
+}
+async function clearWinner() {
+  if (!confirm('Törlöd a győztest?')) return;
+  const { error } = await sb.rpc('admin_set_winner', { p_game: S.sel, p_player: null, p_order: null });
+  if (error) return alert(error.message);
+  closeWinnerModal();
+  await loadGames(); renderGame();
+}
+
+/* ============ STATS MODAL ============ */
+async function openPlayerStats(playerId) {
+  if (S.demo || !S.actAs) return;
+  if ($('stats-modal')) return;
+  const p = S.players.find(x => x.id === playerId);
+  if (!p) return;
+
+  const score = S.scores?.players?.[playerId] || { total: 0, county: 0, building: 0, unit: 0, kill: 0, is_nagyur: false };
+  const myOrder = (S.orderMembers || []).find(m => m.player_id === playerId && m.status === 'active');
+  const orderScore = myOrder ? (S.scores?.orders?.[myOrder.order_id]?.total || 0) : null;
+  const orderName = myOrder ? (S.orders || []).find(o => o.id === myOrder.order_id)?.name : null;
+
+  let gameStats = { puskas_raised: 0, agyus_raised: 0, puskas_lost: 0, agyus_lost: 0, puskas_killed: 0, agyus_killed: 0 };
+  try {
+    const { data } = await sb.from('player_stats').select('*').eq('game_id', S.sel).eq('player_id', playerId).maybeSingle();
+    if (data) gameStats = data;
+  } catch(e) {}
+
+  let profStats = null;
+  if (p.profile_id) {
+    if (S.statsCache[p.profile_id]) profStats = S.statsCache[p.profile_id];
+    else {
+      try {
+        const { data } = await sb.rpc('get_profile_stats', { p_profile: p.profile_id });
+        if (data) { profStats = data; S.statsCache[p.profile_id] = data; }
+      } catch(e) {}
+    }
+  }
+
+  const g = S.games.find(x => x.id === S.sel);
+  const target = g?.target_score;
+  const total = score.total || 0;
+  const remaining = target ? Math.max(0, target - total) : null;
+  const isWinner = g?.winner_player_id === playerId || (myOrder && g?.winner_order_id === myOrder.order_id);
+
+  let h = `<div class="modal-backdrop" id="stats-modal" onclick="if(event.target===this)closeStats()">
+    <div class="modal" style="max-width:600px">
+      <button class="close" onclick="closeStats()">✕</button>
+      <h2 style="margin-bottom:4px">${esc(p.nation_name)} ${isWinner ? '🏆' : ''}</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 10px">
+        ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt ülés</i>'}
+        ${myOrder ? ` · <b style="color:#6a1b9a">${esc(orderName || '?')}</b>` : ''}
+      </p>
+
+      <div class="mitem" style="background:#fffbe6;border-color:#f0c000">
+        <div class="row"><b class="grow" style="font-size:20px">${total} pont</b>
+          ${target ? `<small style="color:var(--muted)">/ ${target}${remaining !== null ? ' · ' + remaining + ' hátra' : ''}</small>` : ''}
+        </div>
+        <div style="font-size:13px;color:#555;margin-top:6px">
+          <div>· Vármegyék: <b>${score.county || 0}</b> pont</div>
+          <div>· Épületek: <b>${score.building || 0}</b> pont ${score.is_nagyur && score.building ? `<small style="color:var(--warn)">(Nagyúr: ×2 = ${(score.building * 2)} pont)</small>` : ''}</div>
+          <div>· Élő egységek: <b>${score.unit || 0}</b> pont</div>
+          <div>· Legyőzött ellenség: <b>${score.kill || 0}</b> pont</div>
+        </div>
+        ${orderScore !== null ? `<div style="margin-top:8px;padding:8px;background:#f3e5f5;border-radius:6px;font-size:13px"><b style="color:#6a1b9a">${esc(orderName || 'Rend')}</b> összpontszám: <b>${orderScore}</b></div>` : ''}
+      </div>
+
+      <h3 style="margin-top:16px">Ebben a játékban</h3>
+      <div class="mitem">
+        <div style="font-size:13px">
+          <div>🎯 Felállított puskás: <b>${gameStats.puskas_raised || 0}</b></div>
+          <div>🎯 Felállított ágyús: <b>${gameStats.agyus_raised || 0}</b></div>
+          <div style="margin-top:6px">💀 Megölt puskás: <b>${gameStats.puskas_killed || 0}</b> · ágyús: <b>${gameStats.agyus_killed || 0}</b></div>
+          <div>💔 Elvesztett puskás: <b>${gameStats.puskas_lost || 0}</b> · ágyús: <b>${gameStats.agyus_lost || 0}</b></div>
+        </div>
+      </div>
+
+      ${profStats ? `<h3 style="margin-top:16px">Összesített profil</h3>
+      <div class="mitem">
+        <div style="font-size:13px">
+          <div>🎮 Lejátszott játékok: <b>${profStats.games_played || 0}</b></div>
+          <div>🏆 Megnyert játékok: <b>${profStats.games_won || 0}</b></div>
+          <div style="margin-top:6px">🎯 Felállított: puskás <b>${profStats.puskas_raised || 0}</b>, ágyús <b>${profStats.agyus_raised || 0}</b></div>
+          <div>💀 Megölt: puskás <b>${profStats.puskas_killed || 0}</b>, ágyús <b>${profStats.agyus_killed || 0}</b></div>
+          <div>💔 Elvesztett: puskás <b>${profStats.puskas_lost || 0}</b>, ágyús <b>${profStats.agyus_lost || 0}</b></div>
+        </div>
+      </div>` : ''}
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeStats() { $('stats-modal')?.remove(); }
+
 function renderActionBar() {
   const g = S.games.find(x => x.id === S.sel);
   const running = g?.status === 'running';
@@ -690,53 +775,26 @@ function renderActionBar() {
     <button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')" ${btnDis}>→ Mozgatás</button>`;
   if (S.actionMode) {
     if (S.actionPhase === 'select-county') {
-      h += `<span class="grow"></span>
-        <span class="chip" style="background:#fff3cd">Kattints egy saját vármegyére</span>
-        <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
+      h += `<span class="grow"></span><span class="chip" style="background:#fff3cd">Kattints egy saját vármegyére</span><button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
     } else if (S.actionPhase === 'select-units') {
       const units = getSourceUnits();
       const srcName = S.actionSourceName || '?';
       h += `<div style="flex-basis:100%;padding:10px;background:#f8f4e8;border-radius:8px;margin-top:8px">
-        <div class="row"><b>Forrás: ${esc(srcName)}</b>
-          <span class="grow"></span>
-          <span class="chip">Kiválasztva: <b id="unit-sel-count">${S.selectedUnits.length}</b> köteg</span>
-        </div>
+        <div class="row"><b>Forrás: ${esc(srcName)}</b><span class="grow"></span><span class="chip">Kiválasztva: <b id="unit-sel-count">${S.selectedUnits.length}</b> köteg</span></div>
         <div class="row" style="margin-top:8px">`;
-      if (units.length === 0) {
-        h += `<span class="err">Nincs mozgatható egység.</span>`;
-      } else {
-        for (const u of units) {
-          const ut = S.unitTypes.find(x => x.key === u.unit_type);
-          const hpPct = Math.round((u.hp_ratio || 1) * 100);
-          const on = S.selectedUnits.includes(u.id);
-          h += `<label class="unit-chip ${on?'on':''}">
-            <input type="checkbox" id="chk-${u.id}" ${on?'checked':''} onchange="toggleUnitSelection('${u.id}')" style="margin:0">
-            ${u.amount}× ${esc(ut?.name || u.unit_type)} <small style="color:#666">(${hpPct}%)</small>
-          </label>`;
-        }
+      if (units.length === 0) h += `<span class="err">Nincs mozgatható egység.</span>`;
+      else for (const u of units) {
+        const ut = S.unitTypes.find(x => x.key === u.unit_type);
+        const hpPct = Math.round((u.hp_ratio || 1) * 100);
+        const on = S.selectedUnits.includes(u.id);
+        h += `<label class="unit-chip ${on?'on':''}"><input type="checkbox" id="chk-${u.id}" ${on?'checked':''} onchange="toggleUnitSelection('${u.id}')" style="margin:0">${u.amount}× ${esc(ut?.name || u.unit_type)} <small style="color:#666">(${hpPct}%)</small></label>`;
       }
-      h += `</div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn ghost" onclick="selectAllUnits()">Összes</button>
-          <button class="btn ghost" onclick="deselectAllUnits()">Egyik sem</button>
-          <span class="grow"></span>
-          <button class="btn" id="unit-go-btn" onclick="advanceToTarget()" ${S.selectedUnits.length === 0 ? 'disabled' : ''}>Cél kiválasztása →</button>
-          <button class="btn ghost" onclick="backToCounty()">← Vissza</button>
-        </div>
-      </div>`;
+      h += `</div><div class="row" style="margin-top:10px"><button class="btn ghost" onclick="selectAllUnits()">Összes</button><button class="btn ghost" onclick="deselectAllUnits()">Egyik sem</button><span class="grow"></span><button class="btn" id="unit-go-btn" onclick="advanceToTarget()" ${S.selectedUnits.length === 0 ? 'disabled' : ''}>Cél kiválasztása →</button><button class="btn ghost" onclick="backToCounty()">← Vissza</button></div></div>`;
     } else if (S.actionPhase === 'select-target') {
-      h += `<span class="grow"></span>
-        <span class="chip" style="background:#fff3cd">Cél kiválasztása… (${esc(S.actionSourceName || '?')}, ${S.selectedUnits.length} köteg)</span>
-        <button class="btn ghost" onclick="backToUnits()">← Vissza</button>
-        <button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
+      h += `<span class="grow"></span><span class="chip" style="background:#fff3cd">Cél kiválasztása… (${esc(S.actionSourceName || '?')}, ${S.selectedUnits.length} köteg)</span><button class="btn ghost" onclick="backToUnits()">← Vissza</button><button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
     }
-  } else {
-    h += `<span class="grow"></span>`;
-  }
-  h += `
-    <button class="btn ghost" onclick="openDiplomacy()">📜 Diplomácia</button>
-    <button class="btn ghost" onclick="openOrders()">🏰 Vitézi rend</button>
-    <span id="action-hint" style="flex-basis:100%"></span>`;
+  } else h += `<span class="grow"></span>`;
+  h += `<button class="btn ghost" onclick="openDiplomacy()">📜 Diplomácia</button><button class="btn ghost" onclick="openOrders()">🏰 Vitézi rend</button><span id="action-hint" style="flex-basis:100%"></span>`;
   return h;
 }
 
@@ -744,11 +802,17 @@ function renderGame() {
   const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
   const adm = S.profile.is_admin;
   const sc = $('wrap') ? [$('wrap').scrollLeft, $('wrap').scrollTop] : null;
+  const hasWinner = !!(g.winner_player_id || g.winner_order_id);
   $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button>
-    <h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span><span class="grow"></span>` +
+    <h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span>
+    ${g.target_score ? `<span class="chip" style="background:#fff3cd">🎯 Cél: ${g.target_score} pont</span>` : ''}
+    ${hasWinner ? `<span class="chip" style="background:gold;color:#000">🏆 Győztes kihirdetve</span>` : ''}
+    <span class="grow"></span>` +
     (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button>
     <button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button>
     <button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button>
+    <button class="btn ghost" onclick="openTargetModal()">🎯 Cél</button>
+    <button class="btn ghost" onclick="openWinnerModal()">🏆 Győztes</button>
     <button class="btn ghost" onclick="seedTest()">Teszt</button>
     <button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>
     ${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}
@@ -776,13 +840,24 @@ function renderPlayerChips() {
   const el = $('player-chips');
   if (!el) return;
   const cnt = id => S.counties.filter(c => c.owner_id === id).length;
+  const g = S.games.find(x => x.id === S.sel);
+  const target = g?.target_score;
+  const scores = S.scores?.players || {};
+  const maxScore = Math.max(0, ...Object.values(scores).map(s => s.total || 0));
   el.innerHTML = S.players.map(p => {
     const d = p.id === S.actAs ? 'self' : diploStatus(S.actAs, p.id);
     const dCol = DIPLO_COLORS[d] || '#888';
     const dName = d === 'self' ? 'Te' : (DIPLO_NAMES[d] || 'Semleges');
-    return `<span class="chip" style="background:${esc(p.color)}26;border:2px solid ${dCol}">
+    const s = scores[p.id] || {};
+    const total = s.total || 0;
+    const isLeader = total > 0 && total === maxScore;
+    const reachedTarget = target && total >= target;
+    const scoreColor = reachedTarget ? '#b00020' : isLeader ? 'var(--gold)' : 'var(--ink)';
+    return `<span class="chip player-chip" style="background:${esc(p.color)}26;border:2px solid ${dCol}" onclick="openPlayerStats('${p.id}')" title="Kattints a statisztikákhoz">
       <span class="dot" style="background:${esc(p.color)}"></span>
-      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} várm. · <b style="color:${dCol}">${dName}</b></span>`;
+      ${esc(p.nation_name)} · ${p.profiles?.username ? esc(p.profiles.username) : '<i>teszt</i>'} · ${cnt(p.id)} várm. · <b style="color:${dCol}">${dName}</b>
+      · <b style="color:${scoreColor}">${total} pont${reachedTarget ? ' 🏆' : ''}</b>
+    </span>`;
   }).join('') || 'Még nincs játékos.';
 }
 
@@ -798,17 +873,9 @@ function buildMap() {
   Object.keys(POS).forEach(n => {
     const box = document.createElement('div');
     box.className = 'county-svg'; box.style.left = POS[n].left; box.style.top = POS[n].top;
-    box.onmouseenter = e => {
-      S.hoverTarget = S.byName[n]?.id || null;
-      if (S.actionPhase === 'select-target') renderRoutes();
-      tip(n, e);
-    };
+    box.onmouseenter = e => { S.hoverTarget = S.byName[n]?.id || null; if (S.actionPhase === 'select-target') renderRoutes(); tip(n, e); };
     box.onmousemove = moveTip;
-    box.onmouseleave = () => {
-      S.hoverTarget = null;
-      if (S.actionPhase === 'select-target') renderRoutes();
-      $('tooltip').style.display = 'none';
-    };
+    box.onmouseleave = () => { S.hoverTarget = null; if (S.actionPhase === 'select-target') renderRoutes(); $('tooltip').style.display = 'none'; };
     box.onclick = e => { pick(n); tip(n, e); };
     mapEl.appendChild(box); els[n] = box;
     (svgCache[n] ??= fetch('svg/' + n + '.svg').then(r => r.ok ? r.text() : '').catch(() => '')).then(t => {
@@ -830,27 +897,19 @@ function isSameBType(stored, uiB){ return _bKey(stored)===_norm(uiB.key) || _bNa
 function biconFor(b) { return BICON[_norm(b.building_type)] || BICON[_norm(S.btypes[b.building_type])] || null; }
 
 function countyCenter(name) {
-  const box = els[name];
-  const svg = box?.querySelector('svg');
-  const p = POS[name];
+  const box = els[name]; const svg = box?.querySelector('svg'); const p = POS[name];
   if (!p) return null;
   let w = 26, h = 18;
   if (svg) {
     const vb = svg.getAttribute('viewBox');
-    if (vb) {
-      const parts = vb.split(/\s+/).map(Number);
-      if (parts.length === 4) { w = parts[2]; h = parts[3]; }
-    } else {
-      w = parseFloat(svg.getAttribute('width')) || w;
-      h = parseFloat(svg.getAttribute('height')) || h;
-    }
+    if (vb) { const parts = vb.split(/\s+/).map(Number); if (parts.length === 4) { w = parts[2]; h = parts[3]; } }
+    else { w = parseFloat(svg.getAttribute('width')) || w; h = parseFloat(svg.getAttribute('height')) || h; }
   }
   return { x: parseFloat(p.left) + w / 2, y: parseFloat(p.top) + h / 2 };
 }
 
 function renderRoutes() {
-  const old = $('route-svg');
-  if (old) old.remove();
+  const old = $('route-svg'); if (old) old.remove();
   const mapEl = $('map'); if (!mapEl) return;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.id = 'route-svg';
@@ -867,8 +926,7 @@ function renderRoutes() {
     line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
     line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
     line.setAttribute('stroke', m.action === 'attack' ? '#d00000' : '#ff9800');
-    line.setAttribute('stroke-width', '2');
-    line.setAttribute('stroke-dasharray', '8,4');
+    line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-dasharray', '8,4');
     svg.appendChild(line);
   }
   if (S.actionPhase === 'select-target' && S.hoverTarget && S.actionSource) {
@@ -878,14 +936,12 @@ function renderRoutes() {
       const from = countyCenter(srcC.county_definitions.name);
       const to = countyCenter(tgtC.county_definitions.name);
       if (from && to) {
-        /* JAVÍTVA: piros, ha nem szomszédos */
         const isAdj = adjacentToSource(tgtC.county_definitions.name);
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
         line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
         line.setAttribute('stroke', isAdj ? '#b8892b' : '#d00000');
-        line.setAttribute('stroke-width', '3');
-        line.setAttribute('stroke-dasharray', '12,6');
+        line.setAttribute('stroke-width', '3'); line.setAttribute('stroke-dasharray', '12,6');
         svg.appendChild(line);
       }
     }
@@ -899,26 +955,18 @@ function paint(n) {
   const p = S.players.find(x => x.id === c.owner_id);
   const svg = box.querySelector('svg');
   if (svg) svg.setAttribute('fill', p ? p.color : '#d3d3d3');
-
   const diplo = ownerDiplo(c.owner_id);
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   const isSource = S.actionPhase && S.actionSource === c.id;
   const inTargetPhase = S.actionPhase === 'select-target';
   const isAdjacent = inTargetPhase && S.actionSource && !isSource && adjacentToSource(n);
   const isNonAdjacent = inTargetPhase && S.actionSource && !isSource && !isAdjacent;
-
   let filter = '';
-  if (isSource) {
-    filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
-  } else if (battleHere) {
-    filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
-  } else if (isAdjacent) {
-    filter = 'drop-shadow(0 0 7px #b8892b) drop-shadow(0 0 4px #b8892b)';
-  } else if (DIPLO_COLORS[diplo] && !isNonAdjacent) {
-    filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
-  }
+  if (isSource) filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
+  else if (battleHere) filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
+  else if (isAdjacent) filter = 'drop-shadow(0 0 7px #b8892b) drop-shadow(0 0 4px #b8892b)';
+  else if (DIPLO_COLORS[diplo] && !isNonAdjacent) filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   if (box.style.filter !== filter) box.style.filter = filter;
-
   const opacity = isNonAdjacent ? '0.2' : '1';
   if (box.style.opacity !== opacity) box.style.opacity = opacity;
   const cursor = isNonAdjacent ? 'not-allowed' : 'pointer';
@@ -926,16 +974,13 @@ function paint(n) {
 
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) {
-    iconBox = document.createElement('div');
-    iconBox.className = 'bicons';
+    iconBox = document.createElement('div'); iconBox.className = 'bicons';
     iconBox.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;gap:2px;justify-content:center;align-items:center;width:90%;pointer-events:none;z-index:3;';
     box.appendChild(iconBox);
   }
   const icons = [], seen = new Set();
   for (const b of (c.buildings || [])) {
-    const src = biconFor(b);
-    if (!src || seen.has(src)) continue;
-    seen.add(src);
+    const src = biconFor(b); if (!src || seen.has(src)) continue; seen.add(src);
     const inProgress = b.completes_at && new Date(b.completes_at) > Date.now();
     icons.push({ src, inProgress });
   }
@@ -945,93 +990,64 @@ function paint(n) {
 
   let unitsBox = box.querySelector('.units');
   if (!unitsBox) {
-    unitsBox = document.createElement('div');
-    unitsBox.className = 'units';
+    unitsBox = document.createElement('div'); unitsBox.className = 'units';
     unitsBox.style.cssText = 'position:absolute;bottom:1px;left:0;right:0;display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center;z-index:4;pointer-events:none;';
     box.appendChild(unitsBox);
   }
-  const visible = (S.units || []).filter(u => u.county_id === c.id && (
-    u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
+  const visible = (S.units || []).filter(u => u.county_id === c.id && (u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const marching = incomingTo(c.id);
-
   const visibleHtml = visible.map(u => {
     const isSelf = u.player_id === S.actAs;
     const isSelected = S.selectedUnits.includes(u.id);
     const bg = isSelf ? '#555' : '#9c27b0';
     const src = UNIT_ICONS[u.unit_type];
-    const icon = src
-      ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;" alt="">`
+    const icon = src ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;" alt="">`
       : `<span style="display:inline-block;width:10px;height:10px;background:${bg};border:1px solid #222;box-sizing:border-box;"></span>`;
     const border = isSelected ? '2px solid gold' : '1px solid transparent';
-    return `<span class="unit-icon" data-uid="${u.id}" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;border:${border};">
-      ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${u.amount}</span></span>`;
+    return `<span class="unit-icon" data-uid="${u.id}" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px;border:${border};">${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${u.amount}</span></span>`;
   }).join('');
-
   const marchingHtml = marching.map(m => {
     const src = UNIT_ICONS[m.unit_type];
-    const icon = src
-      ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;opacity:.5" alt="">`
+    const icon = src ? `<img src="${src}" onerror="imgFallback(this)" style="width:11px;height:11px;object-fit:contain;opacity:.5" alt="">`
       : `<span style="display:inline-block;width:10px;height:10px;background:#888;border:1px dashed #ff9800;box-sizing:border-box;"></span>`;
-    return `<span class="unit-icon marching" title="Közeledik" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.4);border-radius:3px;padding:0 2px;border:1px dashed #ff9800;">
-      ${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${m.amount}</span></span>`;
+    return `<span class="unit-icon marching" title="Közeledik" style="display:inline-flex;align-items:center;gap:1px;background:rgba(0,0,0,.4);border-radius:3px;padding:0 2px;border:1px dashed #ff9800;">${icon}<span style="font-size:9px;font-weight:700;color:#fff;">${m.amount}</span></span>`;
   }).join('');
-
   unitsBox.innerHTML = visibleHtml + marchingHtml;
 }
 
-function paintAll() {
-  for (const n of Object.keys(els)) paint(n);
-  renderRoutes();
-}
+function paintAll() { for (const n of Object.keys(els)) paint(n); renderRoutes(); }
 
 function info(n) {
   const c = S.byName[n]; if (!c) return `<b>${esc(n)}</b> (nincs)`;
   const d = c.county_definitions, p = S.players.find(x => x.id === c.owner_id);
   const b = c.buildings.map(x => (S.btypes[x.building_type] || x.building_type) + ' ' + x.level + '. szint' + (x.completes_at && new Date(x.completes_at) > Date.now() ? ' (épül)' : '')).join(', ') || 'nincs';
-
-  const units = (S.units || []).filter(u => u.county_id === c.id && (
-    u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
+  const units = (S.units || []).filter(u => u.county_id === c.id && (u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
   const unitsByPlayer = {};
   for (const u of units) {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
     const hpPct = Math.round((u.hp_ratio || 1) * 100);
     const training = !isUnitReady(u);
-    const name = ut?.name || u.unit_type;
-    const tag = `${u.amount}× ${name}${hpPct < 100 ? ` (${hpPct}%)` : ''}${training ? ' (kik.)' : ''}`;
+    const tag = `${u.amount}× ${ut?.name || u.unit_type}${hpPct < 100 ? ` (${hpPct}%)` : ''}${training ? ' (kik.)' : ''}`;
     (unitsByPlayer[u.player_id] = unitsByPlayer[u.player_id] || []).push(tag);
   }
   let unitStr = '';
   if (Object.keys(unitsByPlayer).length) {
-    for (const [pid, tags] of Object.entries(unitsByPlayer)) {
-      const pl = S.players.find(x => x.id === pid);
-      const pname = pl?.nation_name || '(?)';
-      unitStr += `<br>· <b>${esc(pname)}</b>: ${tags.join(', ')}`;
-    }
-  } else {
-    unitStr = ' –';
-  }
-
+    for (const [pid, tags] of Object.entries(unitsByPlayer)) unitStr += `<br>· <b>${esc(S.players.find(x => x.id === pid)?.nation_name || '?')}</b>: ${tags.join(', ')}`;
+  } else unitStr = ' –';
   const incoming = incomingTo(c.id);
   let incomingStr = '';
-  if (incoming.length) {
-    incomingStr = '<br><small style="color:#b26a00">→ Közeledik: ' + incoming.map(m => {
-      const ut = S.unitTypes.find(x => x.key === m.unit_type);
-      const eta = (new Date(m.arrive_at) - Date.now()) / 1000;
-      return `${m.amount}× ${ut?.name || m.unit_type} (${fmtT(eta)})`;
-    }).join(', ') + '</small>';
-  }
-
+  if (incoming.length) incomingStr = '<br><small style="color:#b26a00">→ Közeledik: ' + incoming.map(m => { const eta = (new Date(m.arrive_at) - Date.now()) / 1000; return `${m.amount}× ${S.unitTypes.find(x => x.key === m.unit_type)?.name || m.unit_type} (${fmtT(eta)})`; }).join(', ') + '</small>';
   const battleHere = (S.battles || []).find(x => x.county_id === c.id && x.status === 'active');
   const battleStr = battleHere ? `<br><b style="color:#b00020">⚔ CSATA FOLYIK</b>` : '';
-
   const diplo = ownerDiplo(c.owner_id);
   let diploStr = '';
   if (diplo === 'self') diploStr = ' <b style="color:var(--ok)">(te)</b>';
   else if (diplo === 'unowned') diploStr = ' <small style="color:#888">(uralatlan — 1-es helyőrség)</small>';
   else diploStr = ` <small>· viszony: <b style="color:${DIPLO_COLORS[diplo] || '#666'}">${DIPLO_NAMES[diplo] || diplo}</b></small>`;
-
+  const cb = c.capture_bonus || 0;
+  const bonusStr = cb > 0 ? ` <small style="color:var(--gold)">(+${cb} pont)</small>` : '';
   return `<b style="font:700 17px Georgia,serif">${esc(n)}</b><br>
-    Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}${diploStr}<br>
+    Tulajdonos: ${p ? esc(p.nation_name) + (p.profiles?.username ? ' (' + esc(p.profiles.username) + ')' : ' (teszt)') : 'senkié'}${diploStr}${bonusStr}<br>
     Termel: ${d.county_resources.map(r => RES[r.resource]).join(', ') || '–'}<br>
     Egyéb: ${esc(d.features.join(', ')) || '–'}<br>
     Épületek: ${esc(b)}<br>
@@ -1045,10 +1061,8 @@ const num = x => (Math.floor(x * 10) / 10).toLocaleString('hu-HU');
 const liveAmt = r => Math.min(Number(r.cap_amount), Number(r.current_amount) + Number(r.rate_per_hour) * (Date.now() - S.prodAt) / 3.6e6);
 const curMp = () => S.mp ? Math.max(S.mp.manpower, Math.min(S.mp.cap, S.mp.manpower + S.mp.rate * (Date.now() - S.mpAt) / 3.6e6)) : 0;
 const costHtml = cost => Object.entries(cost || {}).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
-const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_bonus * 100)}% termelés`, b.manpower_bonus > 0 && `+${b.manpower_bonus} munkaerő/óra`,
-  b.defense_bonus > 0 && `+${Math.round(b.defense_bonus * 100)}% védelem`].filter(Boolean).join(', ') || '–';
+const effectHtml = b => [b.production_bonus > 0 && `+${Math.round(b.production_bonus * 100)}% termelés`, b.manpower_bonus > 0 && `+${b.manpower_bonus} munkaerő/óra`, b.defense_bonus > 0 && `+${Math.round(b.defense_bonus * 100)}% védelem`].filter(Boolean).join(', ') || '–';
 
-/* JAVÍTVA: _busy flag a párhuzamos futás ellen, újrafuttatás queue-val */
 let _busy = false;
 let _pendingRefresh = false;
 const refreshNow = async () => {
@@ -1080,45 +1094,28 @@ async function tickMilitary() {
 }
 
 async function setActAs(v) { S.actAs = v; await refreshNow(); }
+
 function pick(n) {
   const c = S.byName[n]; if (!c) return;
-
   if (S.actionPhase === 'select-county') {
-    /* Csata ellenőrzés előbb */
-    if ((S.battles || []).some(b => b.county_id === c.id && b.status === 'active')) {
-      updateActionHint('⚔ Ebben a vármegyében csata folyik — innen nem tudsz egységet mozgatni.');
-      return;
-    }
-    /* Csak akkor engedjük, ha van ott saját mozgatható egység (tulajdonostól függetlenül) */
+    if ((S.battles || []).some(b => b.county_id === c.id && b.status === 'active')) { updateActionHint('⚔ Ebben a vármegyében csata folyik — innen nem tudsz egységet mozgatni.'); return; }
     const units = (S.units||[]).filter(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
     if (!units.length) {
       if (c.owner_id !== S.actAs) {
         const d = ownerDiplo(c.owner_id);
-        if (d === 'ally' || d === 'coop') {
-          updateActionHint('Ezen a szövetséges területen nincs saját mozgatható egységed.');
-        } else {
-          updateActionHint('Ez nem a te vármegyéd, és nincs itt mozgatható egységed.');
-        }
-      } else {
-        updateActionHint('Ebben a vármegyében nincs mozgatható egységed.');
-      }
+        if (d === 'ally' || d === 'coop') updateActionHint('Ezen a szövetséges területen nincs saját mozgatható egységed.');
+        else updateActionHint('Ez nem a te vármegyéd, és nincs itt mozgatható egységed.');
+      } else updateActionHint('Ebben a vármegyében nincs mozgatható egységed.');
       return;
     }
-    S.actionSource = c.id;
-    S.actionSourceName = n;
-    S.actionPhase = 'select-units';
+    S.actionSource = c.id; S.actionSourceName = n; S.actionPhase = 'select-units';
     S.selectedUnits = units.map(u => u.id);
-    renderGameUpdate();
-    updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".');
+    renderGameUpdate(); updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".');
     return;
   }
-
   if (S.actionPhase === 'select-target') {
     if (c.id === S.actionSource) { updateActionHint('A cél nem lehet azonos a forrással.'); return; }
-    if (!adjacentToSource(n)) {
-      updateActionHint('⛔ Csak a szomszédos vármegyékre mozoghatsz (arannyal jelölve).');
-      return;
-    }
+    if (!adjacentToSource(n)) { updateActionHint('⛔ Csak a szomszédos vármegyékre mozoghatsz (arannyal jelölve).'); return; }
     if (S.actionMode === 'attack') {
       const d = ownerDiplo(c.owner_id);
       if (d === 'coop' || d === 'ally') { alert('Szövetségesre / együttműködőre nem támadhatsz.'); return; }
@@ -1128,197 +1125,108 @@ function pick(n) {
     openSendModal(S.actionSource, c.id, S.actionMode);
     return;
   }
-
   clearTimeout(S.pickTimeout);
-  S.picked = n;
-  renderPick();
+  S.picked = n; renderPick();
   S.pickTimeout = setTimeout(() => { S.picked = null; const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }, 5000);
 }
-
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
-
 function startAction(mode) {
   if (S.actionMode === mode) { cancelAction(); return; }
-  S.actionMode = mode;
-  S.actionPhase = 'select-county';
-  S.selectedUnits = [];
-  S.actionSource = null;
-  S.actionSourceName = null;
-  S.actionTarget = null;
-  S.hoverTarget = null;
-  clearTimeout(S.pickTimeout);
-  renderGameUpdate();
+  S.actionMode = mode; S.actionPhase = 'select-county';
+  S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null;
+  clearTimeout(S.pickTimeout); renderGameUpdate();
   const hints = { attack:'⚔ Támadás: kattints egy saját vármegyére.', defend:'🛡 Védekezés: kattints egy saját vármegyére.', move:'→ Mozgatás: kattints egy saját vármegyére.' };
   updateActionHint(hints[mode] || '');
 }
-
-function cancelAction() {
-  S.actionMode = null; S.actionPhase = null;
-  S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null;
-  renderGameUpdate();
-  updateActionHint('');
-}
-
-function backToCounty() {
-  S.actionPhase = 'select-county';
-  S.actionSource = null;
-  S.actionSourceName = null;
-  S.actionTarget = null;
-  S.selectedUnits = [];
-  renderGameUpdate();
-  updateActionHint('Kattints egy saját vármegyére.');
-}
-
-function backToUnits() {
-  S.actionPhase = 'select-units';
-  S.actionTarget = null;
-  S.hoverTarget = null;
-  renderGameUpdate();
-  updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".');
-}
-
-function advanceToTarget() {
-  if (S.selectedUnits.length === 0) return;
-  S.actionPhase = 'select-target';
-  S.hoverTarget = null;
-  renderGameUpdate();
-  updateActionHint('Kattints egy arannyal jelölt szomszédos vármegyére (a szaggatott vonal az útvonalat mutatja).');
-}
-
+function cancelAction() { S.actionMode = null; S.actionPhase = null; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint(''); }
+function backToCounty() { S.actionPhase = 'select-county'; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.selectedUnits = []; renderGameUpdate(); updateActionHint('Kattints egy saját vármegyére.'); }
+function backToUnits() { S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Válaszd ki az egységeket, majd "Cél kiválasztása".'); }
+function advanceToTarget() { if (S.selectedUnits.length === 0) return; S.actionPhase = 'select-target'; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Kattints egy arannyal jelölt szomszédos vármegyére.'); }
 function toggleUnitSelection(unitId) {
   const idx = S.selectedUnits.indexOf(unitId);
-  if (idx >= 0) S.selectedUnits.splice(idx, 1);
-  else S.selectedUnits.push(unitId);
-  const cntEl = $('unit-sel-count');
-  if (cntEl) cntEl.textContent = S.selectedUnits.length;
-  const goBtn = $('unit-go-btn');
-  if (goBtn) goBtn.disabled = S.selectedUnits.length === 0;
-  const chip = $('chk-' + unitId)?.closest('.unit-chip');
-  if (chip) chip.classList.toggle('on', S.selectedUnits.includes(unitId));
+  if (idx >= 0) S.selectedUnits.splice(idx, 1); else S.selectedUnits.push(unitId);
+  const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = S.selectedUnits.length;
+  const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = S.selectedUnits.length === 0;
+  const chip = $('chk-' + unitId)?.closest('.unit-chip'); if (chip) chip.classList.toggle('on', S.selectedUnits.includes(unitId));
   for (const box of Object.values(els)) {
-    const unitsBox = box.querySelector('.units');
-    if (!unitsBox) continue;
-    for (const el of unitsBox.querySelectorAll('[data-uid]')) {
-      const isSel = S.selectedUnits.includes(el.dataset.uid);
-      el.style.border = isSel ? '2px solid gold' : '1px solid transparent';
-    }
+    const unitsBox = box.querySelector('.units'); if (!unitsBox) continue;
+    for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent';
   }
 }
-
 function selectAllUnits() {
-  const units = getSourceUnits();
-  S.selectedUnits = units.map(u => u.id);
-  for (const u of units) {
-    const chk = $('chk-' + u.id);
-    if (chk) { chk.checked = true; chk.closest('.unit-chip')?.classList.add('on'); }
-  }
-  const cntEl = $('unit-sel-count');
-  if (cntEl) cntEl.textContent = S.selectedUnits.length;
-  const goBtn = $('unit-go-btn');
-  if (goBtn) goBtn.disabled = false;
+  const units = getSourceUnits(); S.selectedUnits = units.map(u => u.id);
+  for (const u of units) { const chk = $('chk-' + u.id); if (chk) { chk.checked = true; chk.closest('.unit-chip')?.classList.add('on'); } }
+  const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = S.selectedUnits.length;
+  const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = false;
   for (const box of Object.values(els)) {
-    const unitsBox = box.querySelector('.units');
-    if (!unitsBox) continue;
-    for (const el of unitsBox.querySelectorAll('[data-uid]')) {
-      el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent';
-    }
+    const unitsBox = box.querySelector('.units'); if (!unitsBox) continue;
+    for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent';
   }
 }
-
 function deselectAllUnits() {
   S.selectedUnits = [];
-  for (const u of getSourceUnits()) {
-    const chk = $('chk-' + u.id);
-    if (chk) { chk.checked = false; chk.closest('.unit-chip')?.classList.remove('on'); }
-  }
-  const cntEl = $('unit-sel-count');
-  if (cntEl) cntEl.textContent = 0;
-  const goBtn = $('unit-go-btn');
-  if (goBtn) goBtn.disabled = true;
+  for (const u of getSourceUnits()) { const chk = $('chk-' + u.id); if (chk) { chk.checked = false; chk.closest('.unit-chip')?.classList.remove('on'); } }
+  const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = 0;
+  const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = true;
   for (const box of Object.values(els)) {
-    const unitsBox = box.querySelector('.units');
-    if (!unitsBox) continue;
+    const unitsBox = box.querySelector('.units'); if (!unitsBox) continue;
     for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = '1px solid transparent';
   }
 }
-
 function sendActionNote(tgtCounty, action) {
   const owner = tgtCounty.owner_id;
-  if (!owner) return '🏴 Uralatlan — 1-es helyőrség védi. Azonnali elfoglalás 10% HP veszteséggel.';
+  if (!owner) return '🏴 Uralatlan — 1-es helyőrség védi. Azonnali elfoglalás 10% HP veszteséggel (+3 pont).';
   if (owner === S.actAs) return '🏰 Saját terület — békés erősítés.';
   const d = diploStatus(S.actAs, owner);
   if (d === 'coop') return '🤝 Együttműködés — békés áthaladás.';
   if (d === 'ally') return '💜 Társ — békés áthaladás. Látod egységeit.';
-  if (d === 'neutral') return '⚠ Semleges — a belépés HÁBORÚT deklarál!';
-  if (d === 'war') return '⚔ Hadi állapot — csata lesz.';
+  if (d === 'neutral') return '⚠ Semleges — a belépés HÁBORÚT deklarál! (+8 pont ha sikerül)';
+  if (d === 'war') return '⚔ Hadi állapot — csata lesz. (+8 pont ha sikerül)';
   return '';
 }
-
 async function openSendModal(srcId, tgtId, action) {
   if ($('send-modal')) return;
   const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
   if (!units.length) { alert('Nincs kiválasztott egység.'); cancelAction(); return; }
-
   const tgtC = S.counties.find(x => x.id === tgtId);
   const srcC = S.counties.find(x => x.id === srcId);
   if (!tgtC || !srcC) { cancelAction(); return; }
   const tgtBattle = (S.battles || []).find(b => b.county_id === tgtId && b.status === 'active');
   if (action === 'attack' && tgtBattle) { alert('Már folyik csata a célban.'); return; }
-
   const note = sendActionNote(tgtC, action);
-  let html = `<div class="modal-backdrop" id="send-modal" onclick="if(event.target===this)closeSendModal()">
-    <div class="modal">
-      <button class="close" onclick="closeSendModal()">✕</button>
-      <h2>${action === 'attack' ? '⚔ Támadás' : action === 'defend' ? '🛡 Védekezés' : '→ Mozgatás'}</h2>
-      <p><b>${esc(srcC.county_definitions.name)}</b> → <b>${esc(tgtC.county_definitions.name)}</b></p>
-      <p style="padding:8px;background:#f8f4e8;border-radius:6px;font-size:13px">${note}</p>
-      <div>`;
+  let html = `<div class="modal-backdrop" id="send-modal" onclick="if(event.target===this)closeSendModal()"><div class="modal">
+    <button class="close" onclick="closeSendModal()">✕</button>
+    <h2>${action === 'attack' ? '⚔ Támadás' : action === 'defend' ? '🛡 Védekezés' : '→ Mozgatás'}</h2>
+    <p><b>${esc(srcC.county_definitions.name)}</b> → <b>${esc(tgtC.county_definitions.name)}</b></p>
+    <p style="padding:8px;background:#f8f4e8;border-radius:6px;font-size:13px">${note}</p><div>`;
   for (const u of units) {
     const ut = S.unitTypes.find(x => x.key === u.unit_type);
     const hpPct = Math.round((u.hp_ratio || 1) * 100);
-    html += `<div class="row" style="margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:6px">
-      <span class="grow"><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount} <small>(${hpPct}% HP)</small></span>
-      <input type="number" id="send-${u.id}" min="0" max="${u.amount}" value="${u.amount}" style="width:80px">
-    </div>`;
+    html += `<div class="row" style="margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:6px"><span class="grow"><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount} <small>(${hpPct}% HP)</small></span><input type="number" id="send-${u.id}" min="0" max="${u.amount}" value="${u.amount}" style="width:80px"></div>`;
   }
-  html += `</div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" onclick="confirmSend('${action}')">Küldés</button>
-        <button class="btn ghost" onclick="closeSendModal()">Mégse</button>
-      </div>
-      <p id="send-msg" class="hint" style="font-size:12px;color:var(--muted)">A vár +2 védelmet ad a védőnek, és +1 támadást a támadónak (forrásban vár).</p>
-    </div>
-  </div>`;
+  html += `</div><div class="row" style="margin-top:10px"><button class="btn" onclick="confirmSend('${action}')">Küldés</button><button class="btn ghost" onclick="closeSendModal()">Mégse</button></div></div></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
 }
 function closeSendModal() { $('send-modal')?.remove(); }
-
 async function confirmSend(action) {
   const src = S.actionSource, tgt = S.actionTarget;
   if (!src || !tgt) return closeSendModal();
   const units = S.selectedUnits.map(id => (S.units||[]).find(u => u.id === id)).filter(Boolean);
   const sends = units.map(u => ({ id: u.id, amount: Number($('send-' + u.id)?.value) || 0 })).filter(x => x.amount > 0);
   if (!sends.length) { $('send-msg').textContent = 'Válassz legalább 1 egységet.'; return; }
-
   let ok = 0, errs = [];
   for (const s of sends) {
     const { error } = await sb.rpc('send_army', { p_unit_id: s.id, p_to_county: tgt, p_amount: s.amount, p_action: action === 'attack' ? 'attack' : 'move', p_player: S.actAs });
     if (error) {
-      if (/Nem szomszédos/i.test(error.message)) {
-        errs.push('A szerver még a régi (pixel-alapú) szomszédság-ellenőrzést használja. Futtasd a 013_adjacency.sql-t a Supabase-ben!');
-      } else if (/Csata folyik a forrásban/i.test(error.message)) {
-        errs.push('Csata folyik a forrásban — előbb visszavonulás vagy várd meg a csata végét.');
-      } else {
-        errs.push(error.message);
-      }
+      if (/Nem szomszédos/i.test(error.message)) errs.push('A szerver még a régi szomszédság-ellenőrzést használja (013_adjacency.sql).');
+      else if (/Csata folyik a forrásban/i.test(error.message)) errs.push('Csata folyik a forrásban.');
+      else errs.push(error.message);
     } else ok++;
   }
   closeSendModal();
   if (errs.length) alert('Hibák:\n' + errs.join('\n'));
   if (ok) { cancelAction(); await refreshNow(); }
 }
-
-/* JAVÍTVA: split modal */
 function splitUnit(unitId) {
   const u = (S.units || []).find(x => x.id === unitId);
   if (!u) return;
@@ -1326,21 +1234,12 @@ function splitUnit(unitId) {
   const max = u.amount - 1;
   if (max < 1) return alert('Ezt az egységet nem lehet tovább osztani.');
   const ut = S.unitTypes.find(x => x.key === u.unit_type);
-  document.body.insertAdjacentHTML('beforeend', `
-    <div class="modal-backdrop" id="split-modal" onclick="if(event.target===this)closeSplitModal()">
-      <div class="modal" style="max-width:380px">
-        <button class="close" onclick="closeSplitModal()">✕</button>
-        <h2>Hasítás</h2>
-        <p><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount}</p>
-        <p>Hány egységet válasszunk le? (max ${max})</p>
-        <div class="row">
-          <input type="number" id="split-amt" min="1" max="${max}" value="${Math.min(5, max)}" style="width:100px">
-          <span class="grow"></span>
-          <button class="btn" onclick="confirmSplit('${unitId}')">Hasítás</button>
-          <button class="btn ghost" onclick="closeSplitModal()">Mégse</button>
-        </div>
-      </div>
-    </div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="split-modal" onclick="if(event.target===this)closeSplitModal()"><div class="modal" style="max-width:380px">
+    <button class="close" onclick="closeSplitModal()">✕</button><h2>Hasítás</h2>
+    <p><b>${esc(ut?.name || u.unit_type)}</b> ×${u.amount}</p>
+    <p>Hány egységet válasszunk le? (max ${max})</p>
+    <div class="row"><input type="number" id="split-amt" min="1" max="${max}" value="${Math.min(5, max)}" style="width:100px"><span class="grow"></span><button class="btn" onclick="confirmSplit('${unitId}')">Hasítás</button><button class="btn ghost" onclick="closeSplitModal()">Mégse</button></div>
+  </div></div>`);
   setTimeout(() => $('split-amt')?.focus(), 50);
 }
 function closeSplitModal() { $('split-modal')?.remove(); }
@@ -1354,8 +1253,6 @@ async function confirmSplit(unitId) {
   if (error) return alert(error.message);
   await refreshNow();
 }
-
-/* JAVÍTVA: merge modal */
 function mergeGroup(ids) {
   if (ids.length < 2) return;
   if ($('merge-modal')) return;
@@ -1363,19 +1260,11 @@ function mergeGroup(ids) {
   if (units.length < 2) return;
   const total = units.reduce((s, u) => s + u.amount, 0);
   const typeName = S.unitTypes.find(x => x.key === units[0]?.unit_type)?.name || '?';
-  document.body.insertAdjacentHTML('beforeend', `
-    <div class="modal-backdrop" id="merge-modal" onclick="if(event.target===this)closeMergeModal()">
-      <div class="modal" style="max-width:380px">
-        <button class="close" onclick="closeMergeModal()">✕</button>
-        <h2>Egyesítés</h2>
-        <p>${ids.length} köteg (${total}× ${esc(typeName)}) egyesítése?</p>
-        <div class="row">
-          <span class="grow"></span>
-          <button class="btn" onclick="confirmMerge(${JSON.stringify(ids).replace(/"/g, "'")})">Egyesítés</button>
-          <button class="btn ghost" onclick="closeMergeModal()">Mégse</button>
-        </div>
-      </div>
-    </div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="merge-modal" onclick="if(event.target===this)closeMergeModal()"><div class="modal" style="max-width:380px">
+    <button class="close" onclick="closeMergeModal()">✕</button><h2>Egyesítés</h2>
+    <p>${ids.length} köteg (${total}× ${esc(typeName)}) egyesítése?</p>
+    <div class="row"><span class="grow"></span><button class="btn" onclick="confirmMerge(${JSON.stringify(ids).replace(/"/g, "'")})">Egyesítés</button><button class="btn ghost" onclick="closeMergeModal()">Mégse</button></div>
+  </div></div>`);
 }
 function closeMergeModal() { $('merge-modal')?.remove(); }
 async function confirmMerge(ids) {
@@ -1385,7 +1274,6 @@ async function confirmMerge(ids) {
   if (error) return alert(error.message);
   await refreshNow();
 }
-
 async function retreat(battleId) {
   if (!confirm('Visszavonulsz? Az egységeid fele HP-ja elveszik.')) return;
   const { error } = await sb.rpc('retreat_from_battle', { p_battle_id: battleId, p_player: S.actAs });
@@ -1398,7 +1286,6 @@ function renderStatus() {
   if (S.demo) { el.innerHTML = ''; return; }
   if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged.</span>'; return; }
   const adm = S.profile.is_admin;
-  /* JAVÍTVA: collect gomb disabled, ha nincs begyűjthető */
   const initialPend = Math.floor(S.prod.filter(r => r.owner_id === S.actAs).reduce((a, r) => a + liveAmt(r), 0));
   el.innerHTML = `<div class="row">` +
     (adm ? `Megfigyelt: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('')}</select>` : '') +
@@ -1415,20 +1302,12 @@ function renderPick() {
   if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; return; }
   const c = S.byName[n]; let h = info(n);
   if (!c) { el.innerHTML = h; return; }
-
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   if (battleHere) {
     const atk = S.players.find(x => x.id === battleHere.attacker_id);
     const def = S.players.find(x => x.id === battleHere.defender_id);
-    h += `<hr><div style="padding:10px;background:#fee;border:1px solid #b00020;border-radius:8px">
-      <b style="color:#b00020">⚔ Csata folyik!</b><br>
-      Támadó: <b>${esc(atk?.nation_name || '?')}</b> · Védő: <b>${esc(def?.nation_name || '?')}</b><br>
-      Hátralévő: <b data-end="${battleHere.ends_at}">…</b>
-      ${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id)
-        ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>` : ''}
-    </div>`;
+    h += `<hr><div style="padding:10px;background:#fee;border:1px solid #b00020;border-radius:8px"><b style="color:#b00020">⚔ Csata folyik!</b><br>Támadó: <b>${esc(atk?.nation_name || '?')}</b> · Védő: <b>${esc(def?.nation_name || '?')}</b><br>Hátralévő: <b data-end="${battleHere.ends_at}">…</b>${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id) ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>` : ''}</div>`;
   }
-
   const incoming = incomingTo(c.id);
   if (incoming.length) {
     h += `<hr><b style="color:#b26a00">→ Közeledő egységek</b>`;
@@ -1438,56 +1317,39 @@ function renderPick() {
       h += `<div style="font-size:13px;color:var(--muted)">${m.amount}× ${esc(ut?.name || m.unit_type)} innen: ${esc(fromC?.county_definitions.name || '?')} · megérkezik: <span data-end="${m.arrive_at}">…</span>${m.action === 'attack' ? ' <b style="color:#b00020">[támadás]</b>' : ''}</div>`;
     }
   }
-
   const adm = S.profile.is_admin, mine = c.owner_id && (adm || c.owner_id === S.actAs);
   if (adm) h += `<br>Tulajdonos: <select onchange="assign('${c.id}', this.value)"><option value="">– senkié –</option>` +
     S.players.map(p => `<option value="${p.id}" ${p.id === c.owner_id ? 'selected' : ''}>${esc(p.nation_name)}</option>`).join('') + `</select>`;
-
   if (!S.demo && mine) {
     const g = S.games.find(x => x.id === S.sel), rows = S.prod.filter(r => r.county_id === c.id);
-    h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ')
-      || '<i>csak futó játékban termel</i>') + ` <button class="btn ghost" onclick="rpc('collect_county',{p_county:'${c.id}'})">Begyűjtés</button>`;
-
+    h += `<hr><b>Termelés</b>: ` + (rows.map(r => `${RES[r.resource]} <b data-lv="${c.id}|${r.resource}">0</b>/${num(r.cap_amount)} <small>(+${num(r.rate_per_hour)}/ó)</small>`).join(' · ') || '<i>csak futó játékban termel</i>') + ` <button class="btn ghost" onclick="rpc('collect_county',{p_county:'${c.id}'})">Begyűjtés</button>`;
     const varOrVarosReady = c.buildings.some(b => isVarOrVaros(b) && isComplete(b));
-    const laktanyaAny    = c.buildings.find(isLaktanya);
-    const laktanyaReady  = laktanyaAny && isComplete(laktanyaAny);
-
+    const laktanyaAny = c.buildings.find(isLaktanya);
+    const laktanyaReady = laktanyaAny && isComplete(laktanyaAny);
     h += `<hr><b>Építkezés</b>` + (g.status !== 'running' ? `<div class="err">A játék nem fut.</div>` : '');
     c.buildings.filter(b => !isComplete(b)).forEach(b => {
-      h += `<div style="color:var(--muted);font-size:13px">⏳ ${esc(S.btypes[b.building_type] || b.building_type)}: épül, még <b data-end="${b.completes_at}"></b></div>`; });
+      h += `<div style="color:var(--muted);font-size:13px">⏳ ${esc(S.btypes[b.building_type] || b.building_type)}: épül, még <b data-end="${b.completes_at}"></b></div>`;
+    });
     h += S.btAll.filter(uiB => !c.buildings.some(st => isSameBType(st, uiB))).map(uiB => {
       let reason = '';
-      if (_norm(uiB.key) === 'laktanya' || _norm(uiB.name) === 'laktanya' || _norm(uiB.key) === 'barracks') {
-        if (!varOrVarosReady) reason = 'Előbb vár vagy város kell';
-      }
+      if (_norm(uiB.key) === 'laktanya' || _norm(uiB.name) === 'laktanya' || _norm(uiB.key) === 'barracks') if (!varOrVarosReady) reason = 'Előbb vár vagy város kell';
       const ok = !reason && (c.owner_id !== S.actAs || (Object.entries(uiB.cost || {}).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= uiB.manpower_cost));
-      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(uiB.name)}</b> – ${effectHtml(uiB)}<br><small>${reason ? '<span class="err">' + reason + '</span> · ' : ''}Ár: ${costHtml(uiB.cost)}${uiB.manpower_cost ? ', ' + uiB.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(uiB.build_seconds / (g.speed_multiplier || 1))}</small></span>
-        <button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${uiB.key}'})">Építés</button></div>`; }).join('');
-
+      return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(uiB.name)}</b> – ${effectHtml(uiB)}<br><small>${reason ? '<span class="err">' + reason + '</span> · ' : ''}Ár: ${costHtml(uiB.cost)}${uiB.manpower_cost ? ', ' + uiB.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(uiB.build_seconds / (g.speed_multiplier || 1))}</small></span><button class="btn" ${ok && g.status === 'running' ? '' : 'disabled'} onclick="rpc('build_building',{p_county:'${c.id}',p_type:'${uiB.key}'})">Építés</button></div>`;
+    }).join('');
     h += `<hr><b>Katonai toborzás</b>`;
-    if (!S.unitTypes.length) {
-      h += `<div class="err" style="font-size:13px">Futtattad a 007_units.sql-t?</div>`;
-    } else if (!laktanyaAny) {
-      h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya.</div>`;
-    } else if (!laktanyaReady) {
-      const left = (new Date(laktanyaAny.completes_at) - Date.now()) / 1000;
-      h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT(left)}</b>.</div>`;
-    } else {
+    if (!S.unitTypes.length) h += `<div class="err" style="font-size:13px">Futtattad a 007_units.sql-t?</div>`;
+    else if (!laktanyaAny) h += `<div style="color:var(--muted);font-size:13px">Nincs laktanya.</div>`;
+    else if (!laktanyaReady) h += `<div style="font-size:13px">Laktanya épül, még <b>${fmtT((new Date(laktanyaAny.completes_at) - Date.now()) / 1000)}</b>.</div>`;
+    else {
       h += S.unitTypes.map(ut => {
         const cost = ut.cost || {};
         const costStr = Object.entries(cost).map(([k, v]) => `${v} ${RES[k] || k}`).join(', ');
         const canAfford = Object.entries(cost).every(([k, v]) => (S.res[k] || 0) >= v) && curMp() >= ut.manpower_cost;
         const disabled = (!canAfford || g.status !== 'running') ? 'disabled' : '';
-        return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}× · ${ut.hp || '?'} HP<br>
-          <small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))}</small></span>
-          <input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}>
-          <button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button>
-        </div>`;
+        return `<div class="row" style="margin:6px 0"><span class="grow"><b>${esc(ut.name)}</b> – ⚔️ ${ut.attack}× / 🛡️ ${ut.defense}× · ${ut.hp || '?'} HP<br><small>Ár: ${costStr}${ut.manpower_cost ? ', ' + ut.manpower_cost + ' munkaerő' : ''} · idő: ${fmtT(ut.build_seconds / (g.speed_multiplier || 1))} · pont: ${ut.key==='puskas'?5:8}</small></span><input type="number" id="rec-${ut.key}" min="1" value="1" style="width:70px" ${disabled}><button class="btn" ${disabled} onclick="recruit('${c.id}','${ut.key}')">Toborzás</button></div>`;
       }).join('');
     }
-
-    const countyUnits = (S.units || []).filter(u => u.county_id === c.id && (
-      u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
+    const countyUnits = (S.units || []).filter(u => u.county_id === c.id && (u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
     if (countyUnits.length) {
       h += `<hr><b>Katonaság</b>`;
       const myReady = countyUnits.filter(u => u.player_id === S.actAs && isUnitReady(u));
@@ -1496,10 +1358,7 @@ function renderPick() {
       for (const [type, list] of Object.entries(groups)) {
         if (list.length < 2) continue;
         const ut = S.unitTypes.find(x => x.key === type);
-        h += `<div class="row" style="margin:4px 0;padding:6px;background:#f0e6d0;border-radius:6px">
-          <span class="grow"><b>${esc(ut?.name || type)}</b>: ${list.length} köteg</span>
-          <button class="btn ghost" onclick="mergeGroup(${JSON.stringify(list.map(x => x.id)).replace(/"/g, "'")})">Összes egyesítése</button>
-        </div>`;
+        h += `<div class="row" style="margin:4px 0;padding:6px;background:#f0e6d0;border-radius:6px"><span class="grow"><b>${esc(ut?.name || type)}</b>: ${list.length} köteg</span><button class="btn ghost" onclick="mergeGroup(${JSON.stringify(list.map(x => x.id)).replace(/"/g, "'")})">Összes egyesítése</button></div>`;
       }
       for (const u of countyUnits) {
         const ut = S.unitTypes.find(x => x.key === u.unit_type);
@@ -1507,13 +1366,9 @@ function renderPick() {
         const training = !isUnitReady(u);
         const myUnit = u.player_id === S.actAs;
         const owner = S.players.find(x => x.id === u.player_id);
-        h += `<div class="row" style="margin:4px 0">
-          <span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b>${!myUnit ? ` <small style="color:${DIPLO_COLORS[diploStatus(S.actAs, u.player_id)] || '#666'}">(${esc(owner?.nation_name || '?')})</small>` : ''} <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>
-          ${myUnit && !training && u.amount > 1 ? `<button class="btn ghost" onclick="splitUnit('${u.id}')">Hasítás</button>` : ''}
-        </div>`;
+        h += `<div class="row" style="margin:4px 0"><span class="grow">${u.amount}× <b>${esc(ut?.name || u.unit_type)}</b>${!myUnit ? ` <small style="color:${DIPLO_COLORS[diploStatus(S.actAs, u.player_id)] || '#666'}">(${esc(owner?.nation_name || '?')})</small>` : ''} <small>(${hpPct}% HP${training ? ' · kiképzés' : ''})</small></span>${myUnit && !training && u.amount > 1 ? `<button class="btn ghost" onclick="splitUnit('${u.id}')">Hasítás</button>` : ''}</div>`;
       }
     }
-
     const inTransit = (S.movements || []).filter(m => m.player_id === S.actAs);
     if (inTransit.length) {
       h += `<hr><b>Mozgásban</b>`;
@@ -1523,8 +1378,6 @@ function renderPick() {
         h += `<div style="font-size:13px;color:var(--muted)">${m.amount}× ${esc(ut?.name || m.unit_type)} → ${esc(toC?.county_definitions.name || '?')} (<span data-end="${m.arrive_at}">…</span>)${m.action === 'attack' ? ' <b style="color:#b00020">[támadás]</b>' : ''}</div>`;
       }
     }
-
-    /* JAVÍTVA: csak kész épületek */
     const completed = S.btAll.filter(uiB => c.buildings.some(st => isComplete(st) && isSameBType(st, uiB))).map(b => esc(b.name)).join(', ');
     if (completed) h += `<div style="color:var(--muted);font-size:12px;margin-top:8px">Kész: ${completed}.</div>`;
   }
@@ -1543,46 +1396,28 @@ async function recruit(countyId, unitKey) {
 }
 
 function tick() {
-  document.querySelectorAll('[data-lv]').forEach(e => { const [cid, res] = e.dataset.lv.split('|');
-    const r = S.prod.find(x => x.county_id === cid && x.resource === res); if (r) e.textContent = num(liveAmt(r)); });
+  document.querySelectorAll('[data-lv]').forEach(e => { const [cid, res] = e.dataset.lv.split('|'); const r = S.prod.find(x => x.county_id === cid && x.resource === res); if (r) e.textContent = num(liveAmt(r)); });
   const mp = $('mpv'); if (mp) mp.textContent = Math.floor(curMp());
   const pd = $('pend');
   if (pd) {
     const cnt = Math.floor(S.prod.filter(r => r.owner_id === S.actAs).reduce((a, r) => a + liveAmt(r), 0));
     pd.textContent = cnt;
-    const btn = $('collect-btn');
-    if (btn) btn.disabled = cnt === 0;
+    const btn = $('collect-btn'); if (btn) btn.disabled = cnt === 0;
   }
-  document.querySelectorAll('[data-end]').forEach(e => { const s = (Date.parse(e.dataset.end) - Date.now()) / 1000; e.textContent = fmtT(s);
-    if (s <= 0 && !S.fin[e.dataset.end]) { S.fin[e.dataset.end] = 1; setTimeout(refreshNow, 800); } });
-  document.querySelectorAll('[data-unit-end]').forEach(e => {
-    const u = (S.units || []).find(x => x.id === e.dataset.unitEnd);
-    if (!u || !u.completes_at) { e.textContent = '–'; return; }
-    const s = (Date.parse(u.completes_at) - Date.now()) / 1000;
-    e.textContent = fmtT(s);
-    if (s <= 0 && !S.fin['u_' + u.id]) { S.fin['u_' + u.id] = 1; setTimeout(refreshNow, 800); }
-  });
-
-  /* JAVÍTVA: 3 mp aktív csata, 5 mp egyéb */
+  document.querySelectorAll('[data-end]').forEach(e => { const s = (Date.parse(e.dataset.end) - Date.now()) / 1000; e.textContent = fmtT(s); if (s <= 0 && !S.fin[e.dataset.end]) { S.fin[e.dataset.end] = 1; setTimeout(refreshNow, 800); } });
+  document.querySelectorAll('[data-unit-end]').forEach(e => { const u = (S.units || []).find(x => x.id === e.dataset.unitEnd); if (!u || !u.completes_at) { e.textContent = '–'; return; } const s = (Date.parse(u.completes_at) - Date.now()) / 1000; e.textContent = fmtT(s); if (s <= 0 && !S.fin['u_' + u.id]) { S.fin['u_' + u.id] = 1; setTimeout(refreshNow, 800); } });
   tickMilitaryCounter++;
   const hasBattle = (S.battles || []).length > 0;
   const interval = hasBattle ? 3 : 5;
-  if (tickMilitaryCounter >= interval) {
-    tickMilitaryCounter = 0;
-    tickMilitary();
-  }
+  if (tickMilitaryCounter >= interval) { tickMilitaryCounter = 0; tickMilitary(); }
 }
 
 /* Piac */
 async function openMarket() {
   if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('market-backdrop')) return;
-  document.body.insertAdjacentHTML('beforeend',
-    `<div class="modal-backdrop" id="market-backdrop" onclick="if(event.target===this)closeMarket()">
-      <div class="modal"><button class="close" onclick="closeMarket()">✕</button>
-        <h2>🏪 Piac</h2><div id="market-content">Betöltés…</div></div></div>`);
-  S.marketTab = 'browse';
-  await loadMarketAndRender();
+  document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="market-backdrop" onclick="if(event.target===this)closeMarket()"><div class="modal"><button class="close" onclick="closeMarket()">✕</button><h2>🏪 Piac</h2><div id="market-content">Betöltés…</div></div></div>`);
+  S.marketTab = 'browse'; await loadMarketAndRender();
 }
 function closeMarket() { $('market-backdrop')?.remove(); }
 async function loadMarket() {
@@ -1602,12 +1437,7 @@ function playerName(pid) { const p = S.players.find(x => x.id === pid); return p
 function renderMarket() {
   const el = $('market-content'); if (!el) return;
   const tab = S.marketTab || 'browse', me = S.actAs;
-  let h = `<div class="modal-tabs">
-    <button class="${tab==='browse'?'on':''}" onclick="marketTab('browse')">Hirdetések</button>
-    <button class="${tab==='mine'?'on':''}" onclick="marketTab('mine')">Saját</button>
-    <button class="${tab==='offers'?'on':''}" onclick="marketTab('offers')">Ajánlataim</button>
-    <button class="${tab==='new'?'on':''}" onclick="marketTab('new')">➕ Új</button>
-  </div>`;
+  let h = `<div class="modal-tabs"><button class="${tab==='browse'?'on':''}" onclick="marketTab('browse')">Hirdetések</button><button class="${tab==='mine'?'on':''}" onclick="marketTab('mine')">Saját</button><button class="${tab==='offers'?'on':''}" onclick="marketTab('offers')">Ajánlataim</button><button class="${tab==='new'?'on':''}" onclick="marketTab('new')">➕ Új</button></div>`;
   if (tab === 'browse') h += renderMarketBrowse(me);
   else if (tab === 'mine') h += renderMarketMine(me);
   else if (tab === 'offers') h += renderMarketOffers(me);
@@ -1619,20 +1449,7 @@ function renderMarketBrowse(me) {
   if (!others.length) return '<p style="color:var(--muted)">Nincs más nyitott hirdetés.</p>';
   return others.map(l => {
     const my = (S.marketOffers || []).find(o => o.listing_id === l.id && o.bidder_id === me && o.status === 'pending');
-    return `<div class="mitem">
-      <div class="row"><b class="grow">${listingTitle(l)}</b><small>${playerName(l.author_id)}</small></div>
-      <div style="color:var(--muted);font-size:12px;margin:4px 0">${new Date(l.created_at).toLocaleString('hu-HU')}</div>
-      ${my ? `<div class="chip" style="background:#e8f5e9">Ajánlatod: ${my.give_amount}× ${resName(my.give_resource)} ↔ ${my.get_amount}× ${resName(my.get_resource)}</div>`
-        : `<button class="btn ghost" onclick="marketOfferForm('${l.id}')">Ajánlat tétel</button>
-           <div id="offer-form-${l.id}" style="display:none;margin-top:8px">
-             <div class="row">
-               <label style="font-size:13px">${l.kind === 'sell' ? 'Te adod:' : 'Te kapod:'}
-                 <select id="of-res-${l.id}">${Object.keys(RES).filter(k => k !== l.resource).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select>
-               </label>
-               <input id="of-amt-${l.id}" type="number" min="1" value="1" style="width:90px">
-               <button class="btn" onclick="marketSubmitOffer('${l.id}')">Küldés</button>
-             </div></div>`}
-    </div>`;
+    return `<div class="mitem"><div class="row"><b class="grow">${listingTitle(l)}</b><small>${playerName(l.author_id)}</small></div><div style="color:var(--muted);font-size:12px;margin:4px 0">${new Date(l.created_at).toLocaleString('hu-HU')}</div>${my ? `<div class="chip" style="background:#e8f5e9">Ajánlatod: ${my.give_amount}× ${resName(my.give_resource)} ↔ ${my.get_amount}× ${resName(my.get_resource)}</div>` : `<button class="btn ghost" onclick="marketOfferForm('${l.id}')">Ajánlat tétel</button><div id="offer-form-${l.id}" style="display:none;margin-top:8px"><div class="row"><label style="font-size:13px">${l.kind === 'sell' ? 'Te adod:' : 'Te kapod:'}<select id="of-res-${l.id}">${Object.keys(RES).filter(k => k !== l.resource).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select></label><input id="of-amt-${l.id}" type="number" min="1" value="1" style="width:90px"><button class="btn" onclick="marketSubmitOffer('${l.id}')">Küldés</button></div></div>`}</div>`;
   }).join('');
 }
 function marketOfferForm(lid) { const el = $('offer-form-' + lid); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
@@ -1649,16 +1466,9 @@ function renderMarketMine(me) {
   return mine.map(l => {
     const pending = (S.marketOffers || []).filter(o => o.listing_id === l.id && o.status === 'pending');
     const badge = { open:'🟢 nyitott', done:'✅ kész', cancelled:'⚪ visszavonva' }[l.status] || l.status;
-    let h = `<div class="mitem">
-      <div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>`;
+    let h = `<div class="mitem"><div class="row"><b class="grow">${listingTitle(l)}</b><span class="chip">${badge}</span></div>`;
     if (l.status === 'open') h += `<div class="row" style="margin-top:6px"><button class="btn danger" onclick="marketCancel('${l.id}')">Visszavonás</button></div>`;
-    if (pending.length) {
-      h += pending.map(o => `<div class="row" style="margin:6px 0;padding:8px;background:#f8f4e8;border-radius:6px">
-        <span class="grow">${playerName(o.bidder_id)}: ad <b>${o.give_amount}× ${resName(o.give_resource)}</b>, kap <b>${o.get_amount}× ${resName(o.get_resource)}</b></span>
-        <button class="btn" onclick="marketDecide('${o.id}', true)">Elfogad</button>
-        <button class="btn ghost" onclick="marketDecide('${o.id}', false)">Elutasít</button>
-      </div>`).join('');
-    }
+    if (pending.length) h += pending.map(o => `<div class="row" style="margin:6px 0;padding:8px;background:#f8f4e8;border-radius:6px"><span class="grow">${playerName(o.bidder_id)}: ad <b>${o.give_amount}× ${resName(o.give_resource)}</b>, kap <b>${o.get_amount}× ${resName(o.get_resource)}</b></span><button class="btn" onclick="marketDecide('${o.id}', true)">Elfogad</button><button class="btn ghost" onclick="marketDecide('${o.id}', false)">Elutasít</button></div>`).join('');
     return h + '</div>';
   }).join('');
 }
@@ -1668,109 +1478,49 @@ function renderMarketOffers(me) {
   return mine.map(o => {
     const l = (S.marketListings || []).find(x => x.id === o.listing_id);
     const st = { pending:'⏳ függő', accepted:'✅ elfogadva', declined:'❌ elutasítva', withdrawn:'⚪ visszavonva' }[o.status] || o.status;
-    return `<div class="mitem">
-      <div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt)'}</b><span class="chip">${st}</span></div>
-      <div style="font-size:13px">Adok: <b>${o.give_amount}× ${resName(o.give_resource)}</b> · Kapok: <b>${o.get_amount}× ${resName(o.get_resource)}</b></div>
-      ${o.status === 'pending' ? `<div class="row" style="margin-top:6px"><button class="btn ghost" onclick="marketWithdraw('${o.id}')">Visszavonás</button></div>` : ''}
-    </div>`;
+    return `<div class="mitem"><div class="row"><b class="grow">${l ? listingTitle(l) : '(törölt)'}</b><span class="chip">${st}</span></div><div style="font-size:13px">Adok: <b>${o.give_amount}× ${resName(o.give_resource)}</b> · Kapok: <b>${o.get_amount}× ${resName(o.get_resource)}</b></div>${o.status === 'pending' ? `<div class="row" style="margin-top:6px"><button class="btn ghost" onclick="marketWithdraw('${o.id}')">Visszavonás</button></div>` : ''}</div>`;
   }).join('');
 }
 function renderMarketNew() {
-  return `<div class="mitem">
-    <label style="display:block;margin-bottom:8px">Típus<br><select id="nl-kind" style="width:100%;max-width:420px">
-      <option value="sell">Kínálok</option><option value="buy">Keresek</option></select></label>
-    <div class="row">
-      <label>Nyersanyag <select id="nl-res">${Object.keys(RES).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select></label>
-      <label>Mennyiség <input id="nl-amt" type="number" min="1" value="1" style="width:100px"></label>
-      <button class="btn" onclick="marketSubmitCreate()">Létrehozás</button>
-    </div>
-  </div>`;
+  return `<div class="mitem"><label style="display:block;margin-bottom:8px">Típus<br><select id="nl-kind" style="width:100%;max-width:420px"><option value="sell">Kínálok</option><option value="buy">Keresek</option></select></label><div class="row"><label>Nyersanyag <select id="nl-res">${Object.keys(RES).map(k => `<option value="${k}">${RES[k]}</option>`).join('')}</select></label><label>Mennyiség <input id="nl-amt" type="number" min="1" value="1" style="width:100px"></label><button class="btn" onclick="marketSubmitCreate()">Létrehozás</button></div></div>`;
 }
 async function marketSubmitCreate() {
   const kind = $('nl-kind')?.value, res = $('nl-res')?.value, amt = Number($('nl-amt')?.value);
   if (!amt || amt < 1) return alert('Adj meg mennyiséget.');
   const { error } = await sb.rpc('market_post', { p_player: S.actAs, p_kind: kind, p_resource: res, p_amount: amt });
   if (error) return alert(error.message);
-  S.marketTab = 'mine';
-  await loadMarketAndRender(); await refreshNow();
+  S.marketTab = 'mine'; await loadMarketAndRender(); await refreshNow();
 }
-async function marketCancel(lid) {
-  if (!confirm('Visszavonod?')) return;
-  const { error } = await sb.rpc('market_cancel', { p_listing: lid });
-  if (error) return alert(error.message);
-  await loadMarketAndRender(); await refreshNow();
-}
-async function marketWithdraw(oid) {
-  if (!confirm('Visszavonod?')) return;
-  const { error } = await sb.rpc('market_withdraw', { p_offer: oid });
-  if (error) return alert(error.message);
-  await loadMarketAndRender(); await refreshNow();
-}
-async function marketDecide(oid, accept) {
-  if (!confirm(accept ? 'Elfogadod?' : 'Elutasítod?')) return;
-  const { error } = await sb.rpc('market_decide', { p_offer: oid, p_accept: accept });
-  if (error) return alert(error.message);
-  await loadMarketAndRender(); await refreshNow();
-}
+async function marketCancel(lid) { if (!confirm('Visszavonod?')) return; const { error } = await sb.rpc('market_cancel', { p_listing: lid }); if (error) return alert(error.message); await loadMarketAndRender(); await refreshNow(); }
+async function marketWithdraw(oid) { if (!confirm('Visszavonod?')) return; const { error } = await sb.rpc('market_withdraw', { p_offer: oid }); if (error) return alert(error.message); await loadMarketAndRender(); await refreshNow(); }
+async function marketDecide(oid, accept) { if (!confirm(accept ? 'Elfogadod?' : 'Elutasítod?')) return; const { error } = await sb.rpc('market_decide', { p_offer: oid, p_accept: accept }); if (error) return alert(error.message); await loadMarketAndRender(); await refreshNow(); }
 
 function openDiplomacy() {
   if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('diplo-modal')) return;
   const others = S.players.filter(p => p.id !== S.actAs);
-  let h = `<div class="modal-backdrop" id="diplo-modal" onclick="if(event.target===this)closeDiplomacy()">
-    <div class="modal">
-      <button class="close" onclick="closeDiplomacy()">✕</button>
-      <h2>📜 Diplomácia</h2>
-      <p style="color:var(--muted);font-size:13px">Társ csak vitézi renden belül lehetséges.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px">
-        <span>⚔ Hadi: <span style="background:#d00000;color:#fff;padding:1px 6px;border-radius:4px">vörös</span></span>
-        <span>Semleges: nincs szín</span>
-        <span>🤝 Együttműk.: <span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:4px">zöld</span></span>
-        <span>💜 Társ: <span style="background:#6a1b9a;color:#fff;padding:1px 6px;border-radius:4px">lila</span></span>
-      </div><div>`;
+  let h = `<div class="modal-backdrop" id="diplo-modal" onclick="if(event.target===this)closeDiplomacy()"><div class="modal"><button class="close" onclick="closeDiplomacy()">✕</button><h2>📜 Diplomácia</h2><p style="color:var(--muted);font-size:13px">Társ csak vitézi renden belül lehetséges.</p><div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:12px"><span>⚔ Hadi: <span style="background:#d00000;color:#fff;padding:1px 6px;border-radius:4px">vörös</span></span><span>Semleges: nincs szín</span><span>🤝 Együttműk.: <span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:4px">zöld</span></span><span>💜 Társ: <span style="background:#6a1b9a;color:#fff;padding:1px 6px;border-radius:4px">lila</span></span></div><div>`;
   for (const p of others) {
     const st = diploStatus(S.actAs, p.id);
     const stName = DIPLO_NAMES[st] || 'Semleges';
     const stColor = DIPLO_COLORS[st] || '#888';
     const inOrder = sameOrder(S.actAs, p.id);
-    h += `<div class="mitem">
-      <div class="row"><b class="grow">${esc(p.nation_name)}</b>
-        <span class="chip" style="background:${stColor || '#888'};color:#fff">${stName}</span>
-        ${inOrder ? '<span class="chip" style="background:#6a1b9a;color:#fff">Rendtag</span>' : ''}
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button class="btn ghost" onclick="setDiplo('${p.id}','war')" ${st==='war'||inOrder?'disabled':''}>⚔ Hadi</button>
-        <button class="btn ghost" onclick="setDiplo('${p.id}','neutral')" ${st==='neutral'||inOrder?'disabled':''}>Semleges</button>
-        <button class="btn ghost" onclick="setDiplo('${p.id}','coop')" ${st==='coop'||inOrder?'disabled':''}>🤝 Együttműk.</button>
-      </div>
-    </div>`;
+    h += `<div class="mitem"><div class="row"><b class="grow">${esc(p.nation_name)}</b><span class="chip" style="background:${stColor || '#888'};color:#fff">${stName}</span>${inOrder ? '<span class="chip" style="background:#6a1b9a;color:#fff">Rendtag</span>' : ''}</div><div class="row" style="margin-top:6px"><button class="btn ghost" onclick="setDiplo('${p.id}','war')" ${st==='war'||inOrder?'disabled':''}>⚔ Hadi</button><button class="btn ghost" onclick="setDiplo('${p.id}','neutral')" ${st==='neutral'||inOrder?'disabled':''}>Semleges</button><button class="btn ghost" onclick="setDiplo('${p.id}','coop')" ${st==='coop'||inOrder?'disabled':''}>🤝 Együttműk.</button></div></div>`;
   }
   h += `</div></div></div>`;
   document.body.insertAdjacentHTML('beforeend', h);
 }
 function closeDiplomacy() { $('diplo-modal')?.remove(); }
-async function setDiplo(targetId, status) {
-  const { error } = await sb.rpc('set_diplomacy', { p_target: targetId, p_status: status, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeDiplomacy(); openDiplomacy();
-}
+async function setDiplo(targetId, status) { const { error } = await sb.rpc('set_diplomacy', { p_target: targetId, p_status: status, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeDiplomacy(); openDiplomacy(); }
 
 function openOrders() {
   if (S.demo) return alert('Demóban nem.');
   if (!S.actAs || $('orders-modal')) return;
   const myMembership = (S.orderMembers || []).find(m => m.player_id === S.actAs);
   const myOrder = myMembership ? (S.orders || []).find(o => o.id === myMembership.order_id) : null;
-  let h = `<div class="modal-backdrop" id="orders-modal" onclick="if(event.target===this)closeOrders()">
-    <div class="modal"><button class="close" onclick="closeOrders()">✕</button>
-      <h2>🏰 Vitézi rend</h2>`;
+  let h = `<div class="modal-backdrop" id="orders-modal" onclick="if(event.target===this)closeOrders()"><div class="modal"><button class="close" onclick="closeOrders()">✕</button><h2>🏰 Vitézi rend</h2>`;
   if (!myMembership) {
-    h += `<p>Még nem vagy tagja rendnek.</p>
-      <div class="mitem"><b>Új rend alapítása</b>
-        <div class="row" style="margin-top:6px">
-          <input id="order-name" placeholder="Rend neve" maxlength="40" class="grow">
-          <button class="btn" onclick="createOrder()">Alapítás</button>
-        </div>
-      </div>`;
+    h += `<p>Még nem vagy tagja rendnek.</p><div class="mitem"><b>Új rend alapítása</b><div class="row" style="margin-top:6px"><input id="order-name" placeholder="Rend neve" maxlength="40" class="grow"><button class="btn" onclick="createOrder()">Alapítás</button></div></div>`;
     const activeOrders = (S.orders || []).filter(o => (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active').length < 3);
     if (activeOrders.length) {
       h += `<h3>Létező rendek</h3>`;
@@ -1778,36 +1528,27 @@ function openOrders() {
         const active = (S.orderMembers || []).filter(m => m.order_id === o.id && m.status === 'active');
         const members = active.map(m => { const p = S.players.find(x => x.id === m.player_id); return p ? esc(p.nation_name) : '?'; }).join(', ');
         const pending = (S.orderMembers || []).find(m => m.order_id === o.id && m.player_id === S.actAs && m.status === 'pending');
-        h += `<div class="mitem">
-          <b>${esc(o.name)}</b> <small>(${active.length}/3 tag)</small><br>
-          <small>Tagok: ${members}</small>
-          ${pending ? `<div class="chip" style="background:#ffe;border:1px solid #cc0">⏳ Jelentkezés függőben</div>`
-            : `<button class="btn ghost" onclick="applyOrder('${o.id}')">Jelentkezés</button>`}
-        </div>`;
+        const orderScore = S.scores?.orders?.[o.id]?.total;
+        h += `<div class="mitem"><b>${esc(o.name)}</b> <small>(${active.length}/3 tag)</small>${orderScore != null ? ` · <b style="color:var(--gold)">${orderScore} pont</b>` : ''}<br><small>Tagok: ${members}</small>${pending ? `<div class="chip" style="background:#ffe;border:1px solid #cc0">⏳ Jelentkezés függőben</div>` : `<button class="btn ghost" onclick="applyOrder('${o.id}')">Jelentkezés</button>`}</div>`;
       }
     }
   } else {
     const active = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'active');
     const pending = (S.orderMembers || []).filter(m => m.order_id === myMembership.order_id && m.status === 'pending');
     const isFounder = myOrder?.founder_id === S.actAs;
-    h += `<h3>${esc(myOrder?.name || '?')}</h3><p>Tagok (${active.length}/3):</p>`;
+    const orderScore = S.scores?.orders?.[myMembership.order_id]?.total;
+    h += `<h3>${esc(myOrder?.name || '?')}${orderScore != null ? ` · <b style="color:var(--gold)">${orderScore} pont</b>` : ''}</h3><p>Tagok (${active.length}/3):</p>`;
     for (const m of active) {
       const p = S.players.find(x => x.id === m.player_id);
       const isMe = m.player_id === S.actAs;
-      h += `<div class="row" style="margin:4px 0;padding:6px;background:#f8f4e8;border-radius:6px">
-        <span class="grow">${esc(p?.nation_name || '?')}${isMe ? ' (te)' : ''}${m.player_id === myOrder?.founder_id ? ' 👑' : ''}</span>
-        ${isFounder && !isMe ? `<button class="btn danger" onclick="kickMember('${m.id}')">Kirúgás</button>` : ''}
-      </div>`;
+      const ps = S.scores?.players?.[m.player_id]?.total || 0;
+      h += `<div class="row" style="margin:4px 0;padding:6px;background:#f8f4e8;border-radius:6px"><span class="grow">${esc(p?.nation_name || '?')}${isMe ? ' (te)' : ''}${m.player_id === myOrder?.founder_id ? ' 👑' : ''} <small style="color:var(--gold)">${ps} pont</small></span>${isFounder && !isMe ? `<button class="btn danger" onclick="kickMember('${m.id}')">Kirúgás</button>` : ''}</div>`;
     }
     if (pending.length) {
       h += `<h3>Jelentkezések</h3>`;
       for (const m of pending) {
         const p = S.players.find(x => x.id === m.player_id);
-        h += `<div class="row" style="margin:4px 0;padding:6px;background:#fff5e0;border-radius:6px">
-          <span class="grow">${esc(p?.nation_name || '?')}</span>
-          ${isFounder ? `<button class="btn" onclick="acceptMember('${m.id}')">Elfogad</button>
-               <button class="btn ghost" onclick="declineMember('${m.id}')">Elutasít</button>` : '<span class="chip">várakozik</span>'}
-        </div>`;
+        h += `<div class="row" style="margin:4px 0;padding:6px;background:#fff5e0;border-radius:6px"><span class="grow">${esc(p?.nation_name || '?')}</span>${isFounder ? `<button class="btn" onclick="acceptMember('${m.id}')">Elfogad</button><button class="btn ghost" onclick="declineMember('${m.id}')">Elutasít</button>` : '<span class="chip">várakozik</span>'}</div>`;
       }
     }
     h += `<div class="row" style="margin-top:10px"><button class="btn danger" onclick="leaveOrder('${myMembership.order_id}')">${isFounder ? 'Rend feloszlatása' : 'Kilépés'}</button></div>`;
@@ -1816,40 +1557,12 @@ function openOrders() {
   document.body.insertAdjacentHTML('beforeend', h);
 }
 function closeOrders() { $('orders-modal')?.remove(); }
-async function createOrder() {
-  const name = $('order-name')?.value?.trim();
-  if (!name) return alert('Adj nevet.');
-  const { error } = await sb.rpc('create_order', { p_game: S.sel, p_name: name, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
-async function applyOrder(orderId) {
-  const { error } = await sb.rpc('apply_to_order', { p_order: orderId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
-async function acceptMember(memberId) {
-  const { error } = await sb.rpc('accept_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
-async function declineMember(memberId) {
-  const { error } = await sb.rpc('decline_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
-async function kickMember(memberId) {
-  if (!confirm('Kirúgod?')) return;
-  const { error } = await sb.rpc('kick_order_member', { p_member: memberId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
-async function leaveOrder(orderId) {
-  if (!confirm('Biztosan?')) return;
-  const { error } = await sb.rpc('leave_order', { p_order: orderId, p_player: S.actAs });
-  if (error) return alert(error.message);
-  await loadState(); renderGameUpdate(); closeOrders(); openOrders();
-}
+async function createOrder() { const name = $('order-name')?.value?.trim(); if (!name) return alert('Adj nevet.'); const { error } = await sb.rpc('create_order', { p_game: S.sel, p_name: name, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
+async function applyOrder(orderId) { const { error } = await sb.rpc('apply_to_order', { p_order: orderId, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
+async function acceptMember(memberId) { const { error } = await sb.rpc('accept_order_member', { p_member: memberId, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
+async function declineMember(memberId) { const { error } = await sb.rpc('decline_order_member', { p_member: memberId, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
+async function kickMember(memberId) { if (!confirm('Kirúgod?')) return; const { error } = await sb.rpc('kick_order_member', { p_member: memberId, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
+async function leaveOrder(orderId) { if (!confirm('Biztosan?')) return; const { error } = await sb.rpc('leave_order', { p_order: orderId, p_player: S.actAs }); if (error) return alert(error.message); await loadState(); renderGameUpdate(); closeOrders(); openOrders(); }
 
 setInterval(tick, 1000);
 </script>
