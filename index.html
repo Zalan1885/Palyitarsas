@@ -73,6 +73,11 @@
   .player-chip:hover{filter:brightness(.95)}
   .winner-banner{background:linear-gradient(135deg,#f4d03f,#f7dc6f);border:2px solid #b8892b;border-radius:12px;padding:16px;margin:12px 0;text-align:center}
   .winner-banner h2{margin:0 0 4px;color:#5d4037}
+  @keyframes battlePulse{0%,100%{box-shadow:0 0 10px 3px rgba(220,0,0,.9)}50%{box-shadow:0 0 22px 10px rgba(255,50,50,.5)}}
+  .county-svg.battle-active{animation:battlePulse 1.5s ease-in-out infinite;border-radius:4px}
+  .battle-banner{background:linear-gradient(135deg,#fee,#fdd);border:2px solid #b00020;border-radius:12px;padding:12px 16px;margin:12px 0;display:flex;align-items:center;gap:12px;cursor:pointer;transition:filter .15s}
+  .battle-banner:hover{filter:brightness(.97)}
+  .battle-banner .title{font:700 16px Georgia,serif;color:#b00020;margin-bottom:2px}
   @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
@@ -215,7 +220,11 @@ function renderAuth(force) {
   if (!force && $('un')) return;
   const reg = authMode === 'register', offs = (S.offices.length ? S.offices : DEMO_OFFICES);
   $('app').innerHTML = `<div class="auth"><div class="hero"><h1>Pályi-játék</h1><p><i>Nagy-Magyarország, 1851.</i> A Habsburgok megbuktak, a Pályi-kormány most építi újra az országot.</p><p>72 vármegye, hat tisztség, közös célok és kemény alkuk.</p><div class="offs">${offs.map(o => `<span><span class="dot" style="background:${o.color}"></span> ${esc(o.name)}</span>`).join('')}</div></div><div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div><label class="field"><span>Felhasználónév</span><input id="un" autocomplete="off" maxlength="24" oninput="checkName()"></label><div id="nhint" class="hint"></div><label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" ><button class="btn ghost eye" type="button" onclick="togglePw()">🙈 Takar</button></div></label>${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" ></label>` : ''}<button id="go" class="btn" style="width:100%;margin-top:6px" onclick="submitAuth()">${reg ? 'Fiók létrehozása' : 'Belépés'}</button><p id="amsg" class="hint"></p><p style="text-align:center;margin:8px 0 0"><a href="#" onclick="demoStart();return false">Kipróbálom bejelentkezés nélkül (demó)</a></p></div></div>`;
-  ['un','pw','pw2'].forEach(id => $(id) && ($(id).onkeydown = e => e.key === 'Enter' && submitAuth()));
+  ['un','pw','pw2'].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); submitAuth(); } };
+});
 }
 function setMode(m) { authMode = m; renderAuth(true); }
 function togglePw() { const on = !$('pw').classList.contains('mask'); ['pw','pw2','np','np2'].forEach(id => $(id)?.classList.toggle('mask', on)); document.querySelectorAll('.eye').forEach(x => x.textContent = on ? '👁 Mutat' : '🙈 Takar'); }
@@ -340,6 +349,16 @@ async function loadState() {
   if (_prevSnap && _prevActAs === S.actAs && _prevSel === S.sel) { try { detectNotifications(_prevSnap); } catch(e) { console.warn('detect:', e); } }
   try { checkExpiringEffects(); } catch(e) {}
   try { checkGameFinished(); } catch(e) {}
+  /* Auto-cancel ha a forrás megszűnt */
+  if (S.actionMode && S.actionSource) {
+    const srcC = S.counties.find(c => c.id === S.actionSource);
+    const stillHasUnits = srcC && (S.units || []).some(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
+    const battleHere = srcC && (S.battles || []).some(b => b.county_id === S.actionSource && b.status === 'active');
+    if (!stillHasUnits || battleHere) {
+      S.actionMode = null; S.actionPhase = null; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null;
+      try { notifPush('action_cancel', 'Akció megszakítva', battleHere ? 'Csata tört ki a forrásvármegyében.' : 'Elvesztetted a forrás egységeit.'); } catch(e) {}
+    }
+  }
   S.snap = snapOf(); S._lastActAs = S.actAs; S._lastSel = S.sel;
 }
 async function openGame(id) {
@@ -451,7 +470,21 @@ async function openVetoModal() {
 function closeVetoModal() { $('veto-modal')?.remove(); }
 async function doVeto(offerId) { if (!confirm('Biztosan vétózod ezt az ajánlatot?')) return; const { error } = await sb.rpc('market_veto', { p_offer: offerId, p_player: S.actAs }); if (error) return alert(error.message); closeVetoModal(); await loadMarketAndRender(); await refreshNow(); }
 
-/* Action bar — Védekezés gomb KIVÉVE */
+function scrollToBattle(countyId) {
+  const c = S.counties.find(x => x.id === countyId);
+  if (!c) return;
+  S.picked = c.county_definitions.name;
+  renderPick();
+  const box = els[c.county_definitions.name];
+  const wrap = $('wrap');
+  if (box && wrap) {
+    const boxRect = box.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    wrap.scrollLeft += boxRect.left - wrapRect.left - wrap.clientWidth/2 + boxRect.width/2;
+    wrap.scrollTop += boxRect.top - wrapRect.top - wrap.clientHeight/2 + boxRect.height/2;
+  }
+}
+
 function renderActionBar() {
   const g = S.games.find(x => x.id === S.sel);
   const running = g?.status === 'running';
@@ -483,7 +516,22 @@ function renderGame() {
     else if (g.winner_player_id) { const p = S.players.find(x => x.id === g.winner_player_id); winnerText = p ? `${esc(p.nation_name)} győzött!` : 'Egy játékos győzött!'; }
     winnerBanner = `<div class="winner-banner"><h2>🏆 Játék vége</h2><p style="margin:0;font-size:16px">${winnerText}</p></div>`;
   }
-  $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button><h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span>${g.target_score ? `<span class="chip" style="background:#fff3cd">🎯 Cél: ${g.target_score} pont</span>` : ''}<span class="grow"></span>` + (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button><button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button><button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button><button class="btn ghost" onclick="openTargetModal()">🎯 Cél</button><button class="btn ghost" onclick="openWinnerModal()">🏆 Győztes</button><button class="btn ghost" onclick="seedTest()">Teszt</button><button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="row" style="margin-top:10px" id="player-chips"></div><div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>${winnerBanner}<div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div><div id="msz"><div id="map"></div></div></div><div id="action-bar">${renderActionBar()}</div></main>`;
+  let battleBanner = '';
+  const activeBattles = (S.battles || []).filter(b => b.status === 'active');
+  if (activeBattles.length > 0 && !hasWinner) {
+    const myBattles = activeBattles.filter(b => b.attacker_id === S.actAs || b.defender_id === S.actAs);
+    const shown = myBattles.length > 0 ? myBattles : activeBattles;
+    const first = shown[0];
+    battleBanner = `<div class="battle-banner" onclick="scrollToBattle('${first.county_id}')">
+      <span style="font-size:26px">⚔</span>
+      <div class="grow">
+        <div class="title">${myBattles.length > 0 ? 'Csatád van!' : 'Csata folyik'}</div>
+        <div style="font-size:13px;color:#666">${shown.map(b => _countyName(b.county_id) + ' (' + fmtT((new Date(b.ends_at) - Date.now())/1000) + ')').join(' · ')}</div>
+      </div>
+      <span style="font-size:20px;color:#b00020">→</span>
+    </div>`;
+  }
+  $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button><h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span>${g.target_score ? `<span class="chip" style="background:#fff3cd">🎯 Cél: ${g.target_score} pont</span>` : ''}<span class="grow"></span>` + (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button><button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button><button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button><button class="btn ghost" onclick="openTargetModal()">🎯 Cél</button><button class="btn ghost" onclick="openWinnerModal()">🏆 Győztes</button><button class="btn ghost" onclick="seedTest()">Teszt</button><button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="row" style="margin-top:10px" id="player-chips"></div><div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>${winnerBanner}${battleBanner}<div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div><div id="msz"><div id="map"></div></div></div><div id="action-bar">${renderActionBar()}</div></main>`;
   buildMap(); setZoom(Z);
   if (sc) { $('wrap').scrollLeft = sc[0]; $('wrap').scrollTop = sc[1]; }
   renderGameUpdate();
@@ -606,6 +654,7 @@ function paint(n) {
   else if (isAdjacent) filter = 'drop-shadow(0 0 7px #b8892b) drop-shadow(0 0 4px #b8892b)';
   else if (DIPLO_COLORS[diplo] && !isNonAdjacent) filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   if (box.style.filter !== filter) box.style.filter = filter;
+  if (battleHere) { box.classList.add('battle-active'); } else { box.classList.remove('battle-active'); }
   const opacity = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? '0.2' : '1';
   if (box.style.opacity !== opacity) box.style.opacity = opacity;
   const cursor = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? 'not-allowed' : 'pointer';
@@ -725,7 +774,16 @@ function pick(n) {
   S.pickTimeout = setTimeout(() => { S.picked = null; const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }, 5000);
 }
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
-function startAction(mode) { document.activeElement?.blur?.(); if (S.actionMode === mode) { cancelAction(); return; } S.actionMode = mode; S.actionPhase = 'select-county'; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; clearTimeout(S.pickTimeout); renderGameUpdate(); const hints = { attack:'⚔ Támadás: válassz saját vármegyét forrásként.', move:'→ Mozgatás: válassz saját vármegyét forrásként.' }; updateActionHint(hints[mode] || ''); }
+function startAction(mode) {
+  document.activeElement?.blur?.();
+  const hasAnyUnit = (S.units || []).some(u => u.player_id === S.actAs && isUnitReady(u));
+  if (!hasAnyUnit) { updateActionHint('⚠ Nincs mozgatható egységed. Előbb toborozz laktanyában.'); return; }
+  if (S.actionMode === mode) { cancelAction(); return; }
+  S.actionMode = mode; S.actionPhase = 'select-county'; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null;
+  clearTimeout(S.pickTimeout); renderGameUpdate();
+  const hints = { attack:'⚔ Támadás: válassz saját vármegyét forrásként.', move:'→ Mozgatás: válassz saját vármegyét forrásként.' };
+  updateActionHint(hints[mode] || '');
+}
 function cancelAction() { document.activeElement?.blur?.(); S.actionMode = null; S.actionPhase = null; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint(''); }
 function backToCounty() { document.activeElement?.blur?.(); S.actionPhase = 'select-county'; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.selectedUnits = []; renderGameUpdate(); updateActionHint('Kattints egy saját vármegyére.'); }
 function backToUnits() { document.activeElement?.blur?.(); S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Válaszd ki az egységeket, majd kattints a "Cél kiválasztása" gombra.'); }
@@ -801,6 +859,13 @@ function renderStatus() {
   if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged ebben a játékban.</span>'; return; }
   const adm = S.profile.is_admin, office = myOffice();
   const initialPend = Math.floor(S.prod.filter(r => r.owner_id === S.actAs).reduce((a, r) => a + liveAmt(r), 0));
+  const myOrderMember = (S.orderMembers || []).find(m => m.player_id === S.actAs && m.status === 'active');
+  let orderChip = '';
+  if (myOrderMember) {
+    const myOrder = (S.orders || []).find(o => o.id === myOrderMember.order_id);
+    const orderScore = S.scores?.orders?.[myOrderMember.order_id]?.total || 0;
+    if (myOrder) orderChip = `<span class="chip" style="background:#f3e5f5">🏰 ${esc(myOrder.name)}: <b>${orderScore}</b> pont</span>`;
+  }
   let effectChips = '';
   for (const e of (S.effects || [])) {
     if (e.ends_at && new Date(e.ends_at) <= Date.now()) continue;
@@ -821,7 +886,7 @@ function renderStatus() {
     abilityBtns += `<button class="btn ghost" onclick="toggleTax()">${hasEffect('tax_enabled') ? '💸 Illeték ki' : '💸 Illeték be'}</button>`;
     abilityBtns += `<button class="btn ghost" onclick="openVetoModal()">🛑 Vétó</button>`;
   }
-  el.innerHTML = `<div class="row">` + (adm ? `Megfigyelt játékos: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}${p.office ? ' (' + (OFFICE_NAMES[p.office] || p.office) + ')' : ''}</option>`).join('')}</select>` : '') + Object.keys(RES).map(k => `<span class="chip" style="${S.res[k] > 0 ? '' : 'opacity:.5'}">${RES[k]}: <b>${num(S.res[k] || 0)}</b></span>`).join('') + `<span class="chip">👥 munkaerő: <b id="mpv">–</b></span>${office ? `<span class="chip" style="background:var(--gold);color:#fff">${OFFICE_NAMES[office] || office}</span>` : ''}</div>` + (effectChips ? `<div class="row" style="margin-top:6px">${effectChips}</div>` : '') + `<div class="row" style="margin-top:6px"><button class="btn" onclick="rpc('collect_all',{p_player:S.actAs})" id="collect-btn" ${initialPend === 0 ? 'disabled' : ''}>Összes begyűjtése (<span id="pend">${initialPend}</span> db)</button><button class="btn" onclick="openMarket()">🏪 Piac</button>${abilityBtns}${adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 minden (teszt)</button>` : ''}</div>`;
+  el.innerHTML = `<div class="row">` + (adm ? `Megfigyelt játékos: <select onchange="setActAs(this.value)">${S.players.map(p => `<option value="${p.id}" ${p.id === S.actAs ? 'selected' : ''}>${esc(p.nation_name)}${p.office ? ' (' + (OFFICE_NAMES[p.office] || p.office) + ')' : ''}</option>`).join('')}</select>` : '') + Object.keys(RES).map(k => `<span class="chip" style="${S.res[k] > 0 ? '' : 'opacity:.5'}">${RES[k]}: <b>${num(S.res[k] || 0)}</b></span>`).join('') + `<span class="chip">👥 munkaerő: <b id="mpv">–</b></span>${office ? `<span class="chip" style="background:var(--gold);color:#fff">${OFFICE_NAMES[office] || office}</span>` : ''}${orderChip}</div>` + (effectChips ? `<div class="row" style="margin-top:6px">${effectChips}</div>` : '') + `<div class="row" style="margin-top:6px"><button class="btn" onclick="rpc('collect_all',{p_player:S.actAs})" id="collect-btn" ${initialPend === 0 ? 'disabled' : ''}>Összes begyűjtése (<span id="pend">${initialPend}</span> db)</button><button class="btn" onclick="openMarket()">🏪 Piac</button>${abilityBtns}${adm ? `<button class="btn ghost" onclick="rpc('admin_grant',{p_player:S.actAs,p_amount:50})">+50 minden (teszt)</button>` : ''}</div>`;
 }
 
 function renderPick() {
