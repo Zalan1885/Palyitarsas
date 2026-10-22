@@ -493,7 +493,11 @@ function renderGameUpdate() {
   if (!els || Object.keys(els).length === 0) { renderGame(); return; }
   paintAll(); renderStatus(); renderPlayerChips();
   if (S.picked) renderPick(); else { const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }
-  const ab = $('action-bar'); if (ab) ab.innerHTML = renderActionBar();
+  const ab = $('action-bar');
+  const active = document.activeElement;
+  if (ab && !(active && ['SELECT','INPUT','TEXTAREA','BUTTON'].includes(active.tagName) && ab.contains(active))) {
+    ab.innerHTML = renderActionBar();
+  }
   notifUpdateBadge();
 }
 
@@ -592,24 +596,27 @@ function paint(n) {
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   const isSource = S.actionPhase && S.actionSource === c.id;
   const inTargetPhase = S.actionPhase === 'select-target';
+  const inCountyPhase = S.actionPhase === 'select-county';
   const isAdjacent = inTargetPhase && S.actionSource && !isSource && adjacentToSource(n);
   const isNonAdjacent = inTargetPhase && S.actionSource && !isSource && !isAdjacent;
+  const hasMyUnits = (S.units || []).some(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
   let filter = '';
   if (isSource) filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
   else if (battleHere) filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
   else if (isAdjacent) filter = 'drop-shadow(0 0 7px #b8892b) drop-shadow(0 0 4px #b8892b)';
   else if (DIPLO_COLORS[diplo] && !isNonAdjacent) filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   if (box.style.filter !== filter) box.style.filter = filter;
-  const opacity = isNonAdjacent ? '0.2' : '1'; if (box.style.opacity !== opacity) box.style.opacity = opacity;
-  const cursor = isNonAdjacent ? 'not-allowed' : 'pointer'; if (box.style.cursor !== cursor) box.style.cursor = cursor;
-
-  /* Kattintás tiltás: select-target fázisban csak a szomszédosakra és a forrásra lehet kattintani */
-  if (inTargetPhase && S.actionSource && !isAdjacent && !isSource) {
+  const opacity = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? '0.2' : '1';
+  if (box.style.opacity !== opacity) box.style.opacity = opacity;
+  const cursor = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? 'not-allowed' : 'pointer';
+  if (box.style.cursor !== cursor) box.style.cursor = cursor;
+  if (inCountyPhase) {
+    if (!hasMyUnits || battleHere) {
+      if (box.style.pointerEvents !== 'none') box.style.pointerEvents = 'none';
+    } else if (box.style.pointerEvents === 'none') box.style.pointerEvents = '';
+  } else if (inTargetPhase && S.actionSource && !isAdjacent && !isSource) {
     if (box.style.pointerEvents !== 'none') box.style.pointerEvents = 'none';
-  } else if (box.style.pointerEvents === 'none') {
-    box.style.pointerEvents = '';
-  }
-
+  } else if (box.style.pointerEvents === 'none') box.style.pointerEvents = '';
   let iconBox = box.querySelector('.bicons');
   if (!iconBox) { iconBox = document.createElement('div'); iconBox.className = 'bicons'; iconBox.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;gap:2px;justify-content:center;align-items:center;width:90%;pointer-events:none;z-index:3;'; box.appendChild(iconBox); }
   const icons = [], seen = new Set();
@@ -633,7 +640,6 @@ function paint(n) {
   }).join('');
   unitsBox.innerHTML = visibleHtml + marchingHtml;
 }
-
 function paintAll() { for (const n of Object.keys(els)) paint(n); renderRoutes(); }
 
 function info(n) {
@@ -719,11 +725,11 @@ function pick(n) {
   S.pickTimeout = setTimeout(() => { S.picked = null; const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }, 5000);
 }
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
-function startAction(mode) { if (S.actionMode === mode) { cancelAction(); return; } S.actionMode = mode; S.actionPhase = 'select-county'; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; clearTimeout(S.pickTimeout); renderGameUpdate(); const hints = { attack:'⚔ Támadás: válassz saját vármegyét forrásként.', move:'→ Mozgatás: válassz saját vármegyét forrásként.' }; updateActionHint(hints[mode] || ''); }
-function cancelAction() { S.actionMode = null; S.actionPhase = null; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint(''); }
-function backToCounty() { S.actionPhase = 'select-county'; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.selectedUnits = []; renderGameUpdate(); updateActionHint('Kattints egy saját vármegyére.'); }
-function backToUnits() { S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Válaszd ki az egységeket, majd kattints a "Cél kiválasztása" gombra.'); }
-function advanceToTarget() { if (S.selectedUnits.length === 0) return; S.actionPhase = 'select-target'; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Kattints egy arannyal jelölt szomszédos vármegyére (a szaggatott vonal az útvonalat mutatja).'); }
+function startAction(mode) { document.activeElement?.blur?.(); if (S.actionMode === mode) { cancelAction(); return; } S.actionMode = mode; S.actionPhase = 'select-county'; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; clearTimeout(S.pickTimeout); renderGameUpdate(); const hints = { attack:'⚔ Támadás: válassz saját vármegyét forrásként.', move:'→ Mozgatás: válassz saját vármegyét forrásként.' }; updateActionHint(hints[mode] || ''); }
+function cancelAction() { document.activeElement?.blur?.(); S.actionMode = null; S.actionPhase = null; S.selectedUnits = []; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint(''); }
+function backToCounty() { document.activeElement?.blur?.(); S.actionPhase = 'select-county'; S.actionSource = null; S.actionSourceName = null; S.actionTarget = null; S.selectedUnits = []; renderGameUpdate(); updateActionHint('Kattints egy saját vármegyére.'); }
+function backToUnits() { document.activeElement?.blur?.(); S.actionPhase = 'select-units'; S.actionTarget = null; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Válaszd ki az egységeket, majd kattints a "Cél kiválasztása" gombra.'); }
+function advanceToTarget() { document.activeElement?.blur?.(); if (S.selectedUnits.length === 0) return; S.actionPhase = 'select-target'; S.hoverTarget = null; renderGameUpdate(); updateActionHint('Kattints egy arannyal jelölt szomszédos vármegyére (a szaggatott vonal az útvonalat mutatja).'); }
 function toggleUnitSelection(unitId) { const idx = S.selectedUnits.indexOf(unitId); if (idx >= 0) S.selectedUnits.splice(idx, 1); else S.selectedUnits.push(unitId); const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = S.selectedUnits.length; const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = S.selectedUnits.length === 0; const chip = $('chk-' + unitId)?.closest('.unit-chip'); if (chip) chip.classList.toggle('on', S.selectedUnits.includes(unitId)); for (const box of Object.values(els)) { const unitsBox = box.querySelector('.units'); if (!unitsBox) continue; for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent'; } }
 function selectAllUnits() { const units = getSourceUnits(); S.selectedUnits = units.map(u => u.id); for (const u of units) { const chk = $('chk-' + u.id); if (chk) { chk.checked = true; chk.closest('.unit-chip')?.classList.add('on'); } } const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = S.selectedUnits.length; const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = false; for (const box of Object.values(els)) { const unitsBox = box.querySelector('.units'); if (!unitsBox) continue; for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = S.selectedUnits.includes(el.dataset.uid) ? '2px solid gold' : '1px solid transparent'; } }
 function deselectAllUnits() { S.selectedUnits = []; for (const u of getSourceUnits()) { const chk = $('chk-' + u.id); if (chk) { chk.checked = false; chk.closest('.unit-chip')?.classList.remove('on'); } } const cntEl = $('unit-sel-count'); if (cntEl) cntEl.textContent = 0; const goBtn = $('unit-go-btn'); if (goBtn) goBtn.disabled = true; for (const box of Object.values(els)) { const unitsBox = box.querySelector('.units'); if (!unitsBox) continue; for (const el of unitsBox.querySelectorAll('[data-uid]')) el.style.border = '1px solid transparent'; } }
@@ -789,6 +795,8 @@ async function retreat(battleId) { if (!confirm('Visszavonulsz? Az egységeid fe
 
 function renderStatus() {
   const el = $('status'); if (!el) return;
+  const active = document.activeElement;
+  if (active && ['SELECT','INPUT','TEXTAREA'].includes(active.tagName) && el.contains(active)) return;
   if (S.demo) { el.innerHTML = ''; return; }
   if (!S.actAs) { el.innerHTML = '<span style="color:var(--muted)">Nincs tisztséged ebben a játékban.</span>'; return; }
   const adm = S.profile.is_admin, office = myOffice();
@@ -818,6 +826,8 @@ function renderStatus() {
 
 function renderPick() {
   const el = $('pick'); if (!el) return;
+  const active = document.activeElement;
+  if (active && ['SELECT','INPUT','TEXTAREA'].includes(active.tagName) && el.contains(active)) { tick(); return; }
   const n = S.picked;
   if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'; return; }
   const c = S.byName[n]; let h = info(n);
