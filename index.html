@@ -92,7 +92,7 @@ const ADJ = {};
 for (const [a, b] of ADJ_PAIRS) { (ADJ[a] = ADJ[a] || new Set()).add(b); (ADJ[b] = ADJ[b] || new Set()).add(a); }
 const EMAIL_DOMAIN = 'jatek.local';
 const sb = window.supabase ? supabase.createClient('https://bcskdpaykdxboimbglud.supabase.co', 'sb_publishable_9Fcjdiw28FeEHzpEP-IDBg_SKix9FXo') : null;
-const RES = {gold:'arany',wheat:'búza',corn:'kukorica',wood:'fa',wine:'szőlő/bor',sugar:'cukor',coal:'szén',iron_ore:'vasérc',livestock:'állat'};
+const RES = {wheat:'búza',wood:'fa',iron:'vas',brick:'tégla',coal:'szén'};
 const ST = {lobby:'Előszoba',running:'Fut',paused:'Szünetel',finished:'Befejezett'};
 const BICON = { 'laktanya':'svg/gyar.svg','barracks':'svg/gyar.svg','gyar':'svg/gyar.svg','var':'svg/var.svg','castle':'svg/var.svg','vár':'svg/var.svg','varos':'svg/varos.svg','city':'svg/varos.svg','város':'svg/varos.svg' };
 const UNIT_ICONS = { puskas:'svg/puskas.svg', agyus:'svg/agyus.svg' };
@@ -220,11 +220,7 @@ function renderAuth(force) {
   if (!force && $('un')) return;
   const reg = authMode === 'register', offs = (S.offices.length ? S.offices : DEMO_OFFICES);
   $('app').innerHTML = `<div class="auth"><div class="hero"><h1>Pályi-játék</h1><p><i>Nagy-Magyarország, 1851.</i> A Habsburgok megbuktak, a Pályi-kormány most építi újra az országot.</p><p>72 vármegye, hat tisztség, közös célok és kemény alkuk.</p><div class="offs">${offs.map(o => `<span><span class="dot" style="background:${o.color}"></span> ${esc(o.name)}</span>`).join('')}</div></div><div class="form"><div class="tabs"><button class="${reg ? '' : 'on'}" onclick="setMode('login')">Belépés</button><button class="${reg ? 'on' : ''}" onclick="setMode('register')">Regisztráció</button></div><label class="field"><span>Felhasználónév</span><input id="un" autocomplete="off" maxlength="24" oninput="checkName()"></label><div id="nhint" class="hint"></div><label class="field"><span>Jelszó (min. 6 karakter)</span><div class="pwrow"><input id="pw" type="text" autocomplete="off" ><button class="btn ghost eye" type="button" onclick="togglePw()">🙈 Takar</button></div></label>${reg ? `<label class="field"><span>Jelszó újra</span><input id="pw2" type="text" autocomplete="off" ></label>` : ''}<button id="go" class="btn" style="width:100%;margin-top:6px" onclick="submitAuth()">${reg ? 'Fiók létrehozása' : 'Belépés'}</button><p id="amsg" class="hint"></p><p style="text-align:center;margin:8px 0 0"><a href="#" onclick="demoStart();return false">Kipróbálom bejelentkezés nélkül (demó)</a></p></div></div>`;
-  ['un','pw','pw2'].forEach(id => {
-  const el = $(id);
-  if (!el) return;
-  el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); submitAuth(); } };
-});
+  ['un','pw','pw2'].forEach(id => { const el = $(id); if (!el) return; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); submitAuth(); } }; });
 }
 function setMode(m) { authMode = m; renderAuth(true); }
 function togglePw() { const on = !$('pw').classList.contains('mask'); ['pw','pw2','np','np2'].forEach(id => $(id)?.classList.toggle('mask', on)); document.querySelectorAll('.eye').forEach(x => x.textContent = on ? '👁 Mutat' : '🙈 Takar'); }
@@ -349,7 +345,6 @@ async function loadState() {
   if (_prevSnap && _prevActAs === S.actAs && _prevSel === S.sel) { try { detectNotifications(_prevSnap); } catch(e) { console.warn('detect:', e); } }
   try { checkExpiringEffects(); } catch(e) {}
   try { checkGameFinished(); } catch(e) {}
-  /* Auto-cancel ha a forrás megszűnt */
   if (S.actionMode && S.actionSource) {
     const srcC = S.counties.find(c => c.id === S.actionSource);
     const stillHasUnits = srcC && (S.units || []).some(u => u.county_id === S.actionSource && u.player_id === S.actAs && isUnitReady(u));
