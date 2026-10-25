@@ -196,17 +196,40 @@ async function boot() {
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) { S.user = null; return renderAuth(); }
   S.user = session.user;
-  const { data } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).single();
-  S.profile = data || {};
+  
+  // Robusztus profil lekérdezés (RLS hiba esetén is működik)
+  let profile = null;
+  try {
+    const { data, error } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).maybeSingle();
+    if (error) {
+      console.error('Profil hiba:', error);
+    } else {
+      profile = data;
+    }
+  } catch(e) {
+    console.error('Profil kivétel:', e);
+  }
+  S.profile = profile || { username: S.user.email?.split('@')[0] || 'ismeretlen', is_admin: false };
+  
   const [o, b, d, r, ut] = await Promise.all([
     sb.from('offices').select('*').order('sort'),
     sb.from('building_types').select('*'),
     sb.from('county_definitions').select('id,name,features,start_office'),
     sb.from('county_resources').select('definition_id,resource'),
     sb.from('unit_types').select('*').order('sort').then(x => x.error ? { data:[] } : x)]);
-  S.offices = o.data || []; S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name])); S.btAll = b.data || []; S.defs = d.data || []; S.unitTypes = ut.data || [];
-  S.cres = {}; (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
+  
+  S.offices = o.data || []; 
+  S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name])); 
+  S.btAll = b.data || []; 
+  S.defs = d.data || []; 
+  S.unitTypes = ut.data || [];
+  S.cres = {}; 
+  (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
   S.msg = o.error?.message || d.error?.message || r.error?.message || '';
+  
+  // Ha az offices üres, írjuk ki a konzolra
+  if (!S.offices.length) console.warn('FIGYELEM: offices üres! Ellenőrizd az RLS-t.');
+  
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
