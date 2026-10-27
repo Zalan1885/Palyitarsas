@@ -6,6 +6,7 @@
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <title>Pályi-játék</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   :root{--bg:#f3ede0;--ink:#2a2119;--card:#fffdf8;--line:#e0d4bd;--accent:#7a1f1f;--gold:#b8892b;--muted:#7a6c5a;--ok:#2e7d4f;--warn:#b26a00}
   *{box-sizing:border-box}
@@ -78,6 +79,13 @@
   .battle-banner{background:linear-gradient(135deg,#fee,#fdd);border:2px solid #b00020;border-radius:12px;padding:12px 16px;margin:12px 0;display:flex;align-items:center;gap:12px;cursor:pointer;transition:filter .15s}
   .battle-banner:hover{filter:brightness(.97)}
   .battle-banner .title{font:700 16px Georgia,serif;color:#b00020;margin-bottom:2px}
+  /* hamburger menü */
+  .menu-wrap{position:relative}
+  .menu-btn{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3);font-size:18px;padding:4px 12px;line-height:1}
+  .header-menu{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.2);min-width:220px;z-index:2000;padding:6px}
+  .header-menu button{display:block;width:100%;text-align:left;background:#fff;border:0;padding:10px 12px;font-size:14px;color:var(--ink);border-radius:4px;cursor:pointer;margin:0}
+  .header-menu button:hover{background:var(--bg)}
+  .header-menu button.danger{color:#b00020}
   @media(max-width:600px){.modal-backdrop{align-items:flex-start;padding:8px}.modal{padding:14px;max-height:calc(100vh - 16px)}.modal-tabs button{padding:8px 10px;font-size:14px}#wrap{height:42vh}}
 </style>
 </head>
@@ -101,6 +109,10 @@ const DIPLO_NAMES = { war:'Hadi', neutral:'Semleges', coop:'Együttműk.', ally:
 const OFFICE_NAMES = { nagyur:'Nagyúr', penzugy:'Pénzügyminiszter', hadugy:'Hadügyminiszter', igazsag:'Igazságügy-miniszter', belugy:'Belügyminiszter', gazdasagi:'Gazdasági biztos' };
 const EFFECT_NAMES = { decree_hadmozdulat:'Hadmozdulat rendelet', decree_gazdasagi:'Gazdasági serkentés', decree_vedelmi:'Védelmi rendelet', mobilizacio:'Hadmozgósítás', konjunktura:'Konjunktúra', tax_enabled:'Kereskedelmi illeték', veto_used:'Vétó (használva)' };
 const DEMO_OFFICES = [{key:'nagyur',name:'Nagyúr',color:'#c0392b'},{key:'penzugy',name:'Pénzügyminiszter',color:'#27ae60'},{key:'hadugy',name:'Hadügyminiszter',color:'#2c3e50'},{key:'igazsag',name:'Igazságügy-miniszter',color:'#8e44ad'},{key:'belugy',name:'Belügyminiszter',color:'#e67e22'},{key:'gazdasagi',name:'Gazdasági biztos',color:'#16a085'}];
+const EMAILJS_SERVICE_ID = 'service_fqkyxpe';
+const EMAILJS_TEMPLATE_ID = 'template_3wr20m2';
+const EMAILJS_PUBLIC_KEY = 'qIzaZIXEm7JbFO0xK';
+if (window.emailjs) { try { emailjs.init(EMAILJS_PUBLIC_KEY); } catch(e) { console.warn('EmailJS init hiba:', e); } }
 Object.values(BICON).forEach(src => { const i = new Image(); i.src = src; });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
@@ -113,11 +125,23 @@ let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {
 function myOffice() { return S.players.find(p => p.id === S.actAs)?.office || null; }
 function hasEffect(type) { return (S.effects || []).some(e => e.effect_type === type && (!e.ends_at || new Date(e.ends_at) > Date.now())); }
 
+async function sendEmailNotif(toEmail, subject, message) {
+  if (!window.emailjs || !toEmail) return;
+  try { await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: toEmail, subject, message, from_name: 'Pályi-játék' }); }
+  catch(e) { console.warn('EmailJS hiba:', e); }
+}
+
 const NOTIF_MAX = 100;
 function notifKey() { return 'palyi_notifs_' + (S.sel||'') + '_' + (S.actAs||''); }
 function notifLoad() { try { const raw = localStorage.getItem(notifKey()); const arr = raw ? JSON.parse(raw) : []; S.notifications = Array.isArray(arr) ? arr : []; } catch(e) { S.notifications = []; } }
 function notifSave() { try { S.notifications = S.notifications.slice(0, NOTIF_MAX); localStorage.setItem(notifKey(), JSON.stringify(S.notifications)); } catch(e) {} }
-function notifPush(type, title, msg) { if (S.demo || !S.actAs) return; S.notifications.unshift({ id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,8), ts: Date.now(), type, title, msg, read: false }); notifSave(); notifUpdateBadge(); if (S.notifOpen) renderNotifModal(); }
+function notifPush(type, title, msg) {
+  if (S.demo || !S.actAs) return;
+  S.notifications.unshift({ id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,8), ts: Date.now(), type, title, msg, read: false });
+  notifSave(); notifUpdateBadge();
+  if (S.notifOpen) renderNotifModal();
+  if (S.profile.email && S.profile.email_notifications) sendEmailNotif(S.profile.email, title, msg);
+}
 function notifUpdateBadge() { const badge = $('notif-badge'); if (!badge) return; const unread = (S.notifications || []).filter(n => !n.read).length; if (unread === 0 || S.notifOpen) { badge.style.display = 'none'; return; } badge.style.display = 'inline-block'; badge.textContent = unread > 99 ? '99+' : String(unread); }
 function loadNotifiedEffects() { try { const raw = localStorage.getItem('notif_effects_' + (S.sel||'') + '_' + (S.actAs||'')); S.notifiedEffects = raw ? JSON.parse(raw) : {}; } catch(e) { S.notifiedEffects = {}; } }
 function saveNotifiedEffects() { try { localStorage.setItem('notif_effects_' + (S.sel||'') + '_' + (S.actAs||''), JSON.stringify(S.notifiedEffects)); } catch(e) {} }
@@ -196,40 +220,22 @@ async function boot() {
   const { data:{ session } } = await sb.auth.getSession();
   if (!session) { S.user = null; return renderAuth(); }
   S.user = session.user;
-  
-  // Robusztus profil lekérdezés (RLS hiba esetén is működik)
   let profile = null;
   try {
-    const { data, error } = await sb.from('profiles').select('username,is_admin').eq('id', S.user.id).maybeSingle();
-    if (error) {
-      console.error('Profil hiba:', error);
-    } else {
-      profile = data;
-    }
-  } catch(e) {
-    console.error('Profil kivétel:', e);
-  }
-  S.profile = profile || { username: S.user.email?.split('@')[0] || 'ismeretlen', is_admin: false };
-  
+    const { data, error } = await sb.from('profiles').select('username,is_admin,email,email_notifications').eq('id', S.user.id).maybeSingle();
+    if (error) console.error('Profil hiba:', error); else profile = data;
+  } catch(e) { console.error('Profil kivétel:', e); }
+  S.profile = profile || { username: S.user.email?.split('@')[0] || 'ismeretlen', is_admin: false, email: null, email_notifications: false };
   const [o, b, d, r, ut] = await Promise.all([
     sb.from('offices').select('*').order('sort'),
     sb.from('building_types').select('*'),
     sb.from('county_definitions').select('id,name,features,start_office'),
     sb.from('county_resources').select('definition_id,resource'),
     sb.from('unit_types').select('*').order('sort').then(x => x.error ? { data:[] } : x)]);
-  
-  S.offices = o.data || []; 
-  S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name])); 
-  S.btAll = b.data || []; 
-  S.defs = d.data || []; 
-  S.unitTypes = ut.data || [];
-  S.cres = {}; 
-  (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
+  S.offices = o.data || []; S.btypes = Object.fromEntries((b.data || []).map(x => [x.key, x.name])); S.btAll = b.data || []; S.defs = d.data || []; S.unitTypes = ut.data || [];
+  S.cres = {}; (r.data || []).forEach(x => (S.cres[x.definition_id] ??= []).push({ resource:x.resource }));
   S.msg = o.error?.message || d.error?.message || r.error?.message || '';
-  
-  // Ha az offices üres, írjuk ki a konzolra
   if (!S.offices.length) console.warn('FIGYELEM: offices üres! Ellenőrizd az RLS-t.');
-  
   await loadGames();
   S.sel ? await openGame(S.sel) : renderList();
 }
@@ -280,9 +286,69 @@ async function changePw() {
   const { error } = await sb.auth.updateUser({ password:a });
   error ? setMsg(huErr(error.message)) : setMsg('A jelszó módosítva.', false);
 }
-const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.demo ? '<span class="chip" style="color:var(--ink)">DEMÓ</span>' : ''}<span>${esc(S.profile.username)}</span>${S.profile.is_admin ? '<span class="chip" style="color:var(--ink)">admin</span>' : ''}${(!S.demo && S.sel && S.actAs) ? '<button onclick="openNotifs()" id="notif-btn" style="position:relative">🔔<span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#d00000;color:#fff;border-radius:999px;font-size:11px;padding:1px 5px;min-width:16px;text-align:center;font-weight:700"></span></button>' : ''}${S.demo ? '' : '<button onclick="renderAccount()">Jelszó</button>'}<button onclick="logout()">Kilépés</button></header>`;
+
+/* ---------- hamburger menü ---------- */
+function toggleMenu(e) {
+  if (e) e.stopPropagation();
+  const m = $('header-menu'); if (!m) return;
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+function closeMenu() { const m = $('header-menu'); if (m) m.style.display = 'none'; }
+document.addEventListener('click', e => {
+  const m = $('header-menu');
+  if (m && m.style.display === 'block' && !e.target.closest('.menu-wrap')) m.style.display = 'none';
+});
+
+/* ---------- beállítások modal ---------- */
+function openSettings() {
+  if (S.demo) return alert('Demó módban nem elérhető.');
+  if ($('settings-modal')) return;
+  const email = S.profile.email || '';
+  const notif = S.profile.email_notifications === true;
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="modal-backdrop" id="settings-modal" onclick="if(event.target===this)closeSettings()">
+      <div class="modal" style="max-width:480px">
+        <button class="close" onclick="closeSettings()">✕</button>
+        <h2>⚙ Beállítások</h2>
+        <div class="mitem">
+          <label class="field" style="display:block;margin:6px 0">
+            <span>E-mail cím (értesítésekhez)</span>
+            <input id="set-email" type="email" value="${esc(email)}" placeholder="pl. nev@example.com" style="width:100%" autocomplete="email">
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:14px">
+            <input id="set-notif" type="checkbox" ${notif ? 'checked' : ''}>
+            E-mail értesítések bekapcsolása
+          </label>
+          <p style="font-size:12px;color:var(--muted);margin:4px 0 10px">
+            Ha be van kapcsolva, a fontos eseményekről (támadás, piaci ajánlat, kiképzés kész, új vármegye) e-mailt is kapsz.
+          </p>
+          <div class="row">
+            <button class="btn" onclick="saveSettings()">Mentés</button>
+            <button class="btn ghost" onclick="closeSettings()">Mégse</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+function closeSettings() { $('settings-modal')?.remove(); }
+async function saveSettings() {
+  const email = $('set-email')?.value.trim() || '';
+  const notif = $('set-notif')?.checked === true;
+  if (notif && !email) return alert('Ha bekapcsolod az értesítést, add meg az e-mail címed.');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert('Érvénytelen e-mail cím.');
+  const { error } = await sb.from('profiles').update({ email, email_notifications: notif }).eq('id', S.user.id);
+  if (error) return alert('Hiba: ' + error.message + ' — futtattad a 027-es SQL-t?');
+  S.profile.email = email;
+  S.profile.email_notifications = notif;
+  closeSettings();
+  alert('Beállítások mentve.');
+}
+
+const header = () => `<header><span class="brand">⚜ Pályi-játék</span>${S.demo ? '<span class="chip" style="color:var(--ink)">DEMÓ</span>' : ''}<span>${esc(S.profile.username)}</span>${S.profile.is_admin ? '<span class="chip" style="color:var(--ink)">admin</span>' : ''}<span class="grow"></span>${(!S.demo && S.sel && S.actAs) ? '<button onclick="openNotifs()" id="notif-btn" style="position:relative">🔔<span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#d00000;color:#fff;border-radius:999px;font-size:11px;padding:1px 5px;min-width:16px;text-align:center;font-weight:700"></span></button>' : ''}<div class="menu-wrap"><button onclick="toggleMenu(event)" class="menu-btn" title="Menü">☰</button><div id="header-menu" class="header-menu" style="display:none">${S.demo ? '' : '<button onclick="closeMenu(); renderAccount()">🔑 Jelszó módosítása</button><button onclick="closeMenu(); openSettings()">⚙ Beállítások</button>'}<button onclick="closeMenu(); logout()" class="danger">🚪 Kilépés</button></div></div></header>`;
+
 function demoStart() {
-  S.demo = true; S.user = { id:'demo' }; S.profile = { username:'admin (demó)', is_admin:true };
+  S.demo = true; S.user = { id:'demo' }; S.profile = { username:'admin (demó)', is_admin:true, email:null, email_notifications:false };
   S.offices = []; S.btypes = {}; S.mySeats = {}; S.defs = [];
   S.games = [{ id:'demo', name:'Demó játék', status:'lobby', speed_multiplier:1 }];
   S.players = [{id:'p_a',nation_name:'A',color:'#c0392b',profile_id:null,profiles:null,office:'nagyur'}];
@@ -489,24 +555,18 @@ function closeVetoModal() { $('veto-modal')?.remove(); }
 async function doVeto(offerId) { if (!confirm('Biztosan vétózod ezt az ajánlatot?')) return; const { error } = await sb.rpc('market_veto', { p_offer: offerId, p_player: S.actAs }); if (error) return alert(error.message); closeVetoModal(); await loadMarketAndRender(); await refreshNow(); }
 
 function scrollToBattle(countyId) {
-  const c = S.counties.find(x => x.id === countyId);
-  if (!c) return;
-  S.picked = c.county_definitions.name;
-  renderPick();
-  const box = els[c.county_definitions.name];
-  const wrap = $('wrap');
+  const c = S.counties.find(x => x.id === countyId); if (!c) return;
+  S.picked = c.county_definitions.name; renderPick();
+  const box = els[c.county_definitions.name], wrap = $('wrap');
   if (box && wrap) {
-    const boxRect = box.getBoundingClientRect();
-    const wrapRect = wrap.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect(), wrapRect = wrap.getBoundingClientRect();
     wrap.scrollLeft += boxRect.left - wrapRect.left - wrap.clientWidth/2 + boxRect.width/2;
     wrap.scrollTop += boxRect.top - wrapRect.top - wrap.clientHeight/2 + boxRect.height/2;
   }
 }
 
 function renderActionBar() {
-  const g = S.games.find(x => x.id === S.sel);
-  const running = g?.status === 'running';
-  const btnDis = running ? '' : 'disabled';
+  const g = S.games.find(x => x.id === S.sel); const running = g?.status === 'running'; const btnDis = running ? '' : 'disabled';
   let h = `<button class="btn ${S.actionMode==='attack'?'active':''}" onclick="startAction('attack')" ${btnDis}>⚔ Támadás</button><button class="btn ${S.actionMode==='move'?'active':''}" onclick="startAction('move')" ${btnDis}>→ Mozgatás</button>`;
   if (S.actionMode) {
     if (S.actionPhase === 'select-county') h += `<span class="grow"></span><span class="chip" style="background:#fff3cd">Kattints egy saját vármegyére (ahol van egységed)</span><button class="btn ghost" onclick="cancelAction()">✕ Mégse</button>`;
@@ -524,8 +584,7 @@ function renderActionBar() {
 
 function renderGame() {
   const g = S.games.find(x => x.id === S.sel); if (!g) return renderList();
-  const adm = S.profile.is_admin;
-  const sc = $('wrap') ? [$('wrap').scrollLeft, $('wrap').scrollTop] : null;
+  const adm = S.profile.is_admin; const sc = $('wrap') ? [$('wrap').scrollLeft, $('wrap').scrollTop] : null;
   const hasWinner = !!(g.winner_player_id || g.winner_order_id);
   let winnerBanner = '';
   if (hasWinner) {
