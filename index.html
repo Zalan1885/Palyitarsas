@@ -298,7 +298,7 @@ async function submitAuth() {
     else { const r = await sb.auth.signInWithPassword({ email, password:pw }); if (r.error) throw r.error; }
   } catch (e) { setMsg(huErr(e.message)); btn.disabled = false; }
 }
-const logout = () => { S.sel = null; if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} S.ch = null; } if (S.demo) { S.demo = false; S.games = []; return renderAuth(); } sb.auth.signOut(); };
+const logout = () => { teardownLobbyRealtime(); S.sel = null; if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} S.ch = null; } if (S.demo) { S.demo = false; S.games = []; return renderAuth(); } sb.auth.signOut(); };
 function renderAccount() {
   $('app').innerHTML = header() + `<main><div class="card" style="max-width:420px"><h2>Jelszó módosítása</h2><label class="field"><span>Új jelszó</span><input id="np" type="text" autocomplete="off" style="width:100%"></label><label class="field"><span>Új jelszó újra</span><input id="np2" type="text" autocomplete="off" style="width:100%"></label><div class="row"><button class="btn" onclick="changePw()">Mentés</button><button class="btn ghost" onclick="renderList()">Vissza</button></div><p id="amsg" class="hint"></p></div></main>`;
 }
@@ -379,6 +379,29 @@ function demoStart() {
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
   renderList();
 }
+
+/* ---------- előszoba (lobby) realtime ---------- */
+let _lobbyCh = null;
+function setupLobbyRealtime() {
+  if (!sb || S.demo) return;
+  if (_lobbyCh) return;
+  let tm;
+  const later = () => {
+    clearTimeout(tm);
+    tm = setTimeout(async () => {
+      try { await loadGames(); } catch(e) { return; }
+      if (!S.sel) renderList();
+    }, 500);
+  };
+  _lobbyCh = sb.channel('lobby-games');
+  _lobbyCh.on('postgres_changes', { event:'*', schema:'public', table:'games' }, later);
+  _lobbyCh.on('postgres_changes', { event:'*', schema:'public', table:'game_players' }, later);
+  _lobbyCh.subscribe();
+}
+function teardownLobbyRealtime() {
+  if (_lobbyCh) { try { sb.removeChannel(_lobbyCh); } catch(e){} _lobbyCh = null; }
+}
+
 function renderList() {
   S.sel = null; S.joinGame = null;
   if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} S.ch = null; }
@@ -392,6 +415,7 @@ function renderList() {
     return `<div class="game"><div class="row"><b class="grow">${esc(g.name)}</b><span class="badge ${g.status}">${ST[g.status]}</span></div><div style="color:var(--muted);margin:4px 0 8px">Sebesség ×${g.speed_multiplier}${mine ? ' · Tisztség: ' + esc(oname) : ''}${g.target_score ? ' · 🎯 Cél: ' + g.target_score + ' pont' : ''}${isWinner ? ' · 🏆' : ''}</div>` + (adm || mine ? `<button class="btn" onclick="openGame('${g.id}')">Megnyitás</button>` : g.status !== 'finished' ? `<button class="btn" onclick="startJoin('${g.id}')">Csatlakozás</button>` : '') + `</div>`;
   }).join('') || '<p>Még nincs játék.</p>') + '</div></main>';
   $('app').innerHTML = h;
+  setupLobbyRealtime();
 }
 async function createGame() {
   if (S.demo) return openGame('demo');
@@ -470,6 +494,7 @@ async function loadState() {
   S.snap = snapOf(); S._lastActAs = S.actAs; S._lastSel = S.sel;
 }
 async function openGame(id) {
+  teardownLobbyRealtime();
   S.sel = id; Z = null;
   try { await sb.rpc('tick_military', {p_game:id}); } catch(e){ console.warn('tick_military:', e.message); }
   await loadState(); renderGame();
