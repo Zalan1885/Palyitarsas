@@ -125,10 +125,19 @@ let els = {}, Z = null, authMode = 'login', nameTimer = null; const svgCache = {
 function myOffice() { return S.players.find(p => p.id === S.actAs)?.office || null; }
 function hasEffect(type) { return (S.effects || []).some(e => e.effect_type === type && (!e.ends_at || new Date(e.ends_at) > Date.now())); }
 
+const _mailQ = []; let _mailBusy = false;
 async function sendEmailNotif(toEmail, subject, message) {
   if (!window.emailjs || !toEmail) return;
-  try { await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: toEmail, subject, message, from_name: 'Pályi-játék' }); }
-  catch(e) { console.warn('EmailJS hiba:', e); }
+  _mailQ.push({ toEmail, subject, message });
+  if (_mailBusy) return;
+  _mailBusy = true;
+  while (_mailQ.length) {
+    const m = _mailQ.shift();
+    try { await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: m.toEmail, subject: m.subject, message: m.message, from_name: 'Pályi-játék' }); }
+    catch(e) { console.warn('EmailJS hiba:', e?.status, e?.text || e); }
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  _mailBusy = false;
 }
 
 const NOTIF_MAX = 100;
@@ -185,6 +194,21 @@ function checkGameFinished() {
   else if (g.winner_player_id) { const p = S.players.find(x => x.id === g.winner_player_id); winnerName = p ? p.nation_name : 'Egy játékos'; }
   notifPush('game_finished', '🏆 Játék vége', `${winnerName} győzött!`);
 }
+function checkTrainingDone() {
+  if (!S.actAs || S.demo) return;
+  if (!S.notifiedEffects) S.notifiedEffects = {};
+  const now = Date.now();
+  for (const u of (S.units || [])) {
+    if (u.player_id !== S.actAs || !u.completes_at) continue;
+    const t = new Date(u.completes_at).getTime();
+    if (t > now) continue;
+    const key = 'trained_' + u.id + '_' + u.completes_at;
+    if (S.notifiedEffects[key]) continue;
+    S.notifiedEffects[key] = true; saveNotifiedEffects();
+    if (now - t > 10 * 60 * 1000) continue;
+    notifPush('recruit_done', '👥 Kiképzés kész', `${u.amount}× ${_unitName(u.unit_type)} kész`);
+  }
+}
 
 function _unitName(k) { return S.unitTypes.find(x => x.key === k)?.name || k; }
 function _countyName(id) { return S.counties.find(c => c.id === id)?.county_definitions.name || '?'; }
@@ -198,7 +222,6 @@ function detectNotifications(prev) {
   for (const b of (S.battles || [])) { if (b.attacker_id !== me && b.defender_id !== me) continue; if (!prev.battles[b.id]) { if (b.attacker_id === me) notifPush('battle_start_atk', '⚔ Támadás indult', `Megtámadtad ${_countyName(b.county_id)} vármegyét (${_nation(b.defender_id)})`); else notifPush('battle_start_def', '🛡 Támadás ért!', `${_nation(b.attacker_id)} megtámadta ${_countyName(b.county_id)} vármegyédet!`); } }
   for (const bid in prev.battles) { const pb = prev.battles[bid]; if (S.battles.some(b => b.id === bid)) continue; const c = S.counties.find(x => x.id === pb.county_id); if (!c) continue; const won = c.owner_id === me; if (pb.attacker_id === me && !won) notifPush('battle_lost_atk', '❌ Vereség', `Nem sikerült bevenni: ${_countyName(pb.county_id)}`); else if (pb.defender_id === me && won) notifPush('battle_won_def', '🛡 Védtél!', `Megtartottad: ${_countyName(pb.county_id)}`); const myBefore = Object.values(prev.units).filter(u => u.player_id === me && u.county_id === pb.county_id); const myAfter = (S.units || []).filter(u => u.player_id === me && u.county_id === pb.county_id); const lost = myBefore.reduce((s,u) => s+u.amount, 0) - myAfter.reduce((s,u) => s+u.amount, 0); if (lost > 0) { const retreated = (S.movements || []).some(m => m.player_id === me && m.from_county === pb.county_id); if (!retreated) notifPush('unit_loss', '💔 Egységveszteség', `${lost} egység elveszett ${_countyName(pb.county_id)} vármegyében`); } }
   for (const c of (S.counties || [])) { const p = prev.counties[c.id]; if (!p) continue; const wasMine = p.owner_id === me, isMine = c.owner_id === me; if (!wasMine && isMine) notifPush('county_gain', '🏰 Új vármegye', `Elfoglaltad: ${c.county_definitions.name}`); else if (wasMine && !isMine) { const newOwner = S.players.find(x => x.id === c.owner_id); notifPush('county_lost', '⚠ Vármegye elveszett', `${c.county_definitions.name}${newOwner ? ' → ' + newOwner.nation_name : ''}`); } }
-  for (const u of (S.units || [])) { if (u.player_id !== me) continue; const p = prev.units[u.id]; if (!p) continue; if (p.status === 'training' && u.status === 'ready') notifPush('recruit_done', '👥 Kiképzés kész', `${u.amount}× ${_unitName(u.unit_type)} kész`); }
   for (const d of (S.diplomacy || [])) { if (d.player_a !== me && d.player_b !== me) continue; const p = prev.diplomacy[d.player_a + '|' + d.player_b]; if (p && p.status !== d.status) { const other = d.player_a === me ? d.player_b : d.player_a; notifPush('diplo_change', '📜 Diplomácia', `${_nation(other)}: ${DIPLO_NAMES[d.status] || d.status}`); } }
   const myMembership = (S.orderMembers || []).find(m => m.player_id === me && m.status === 'active');
   if (myMembership) { const myOrder = (S.orders || []).find(o => o.id === myMembership.order_id); if (myOrder && myOrder.founder_id === me) { for (const m of (S.orderMembers || [])) { if (m.order_id !== myMembership.order_id || m.status !== 'pending') continue; if (!prev.orderMembers[m.id]) notifPush('order_apply', '🏰 Új jelentkezés', `${_nation(m.player_id)} jelentkezett a rendbe`); } } }
@@ -429,6 +452,7 @@ async function loadState() {
   S.counties = (c.data || []).filter(x => defs[x.definition_id]).map(x => ({ id:x.id, owner_id:x.owner_id, capture_bonus: x.capture_bonus || 0, county_definitions:{ name:defs[x.definition_id].name, features:defs[x.definition_id].features || [], county_resources:S.cres[x.definition_id] || [] }, buildings:(b.data || []).filter(y => y.county_id === x.id) }));
   if (!S.counties.length && !S.msg) S.msg = 'Nem találok vármegyéket.';
   S.byName = Object.fromEntries(S.counties.map(x => [x.county_definitions.name, x]));
+  try { await loadMarket(); } catch(e) {}
   const _notifKeyNow = 'palyi_notifs_' + (S.sel||'') + '_' + (S.actAs||'');
   if (S._notifKey !== _notifKeyNow) { S._notifKey = _notifKeyNow; notifLoad(); loadNotifiedEffects(); }
   if (_prevSnap && _prevActAs === S.actAs && _prevSel === S.sel) { try { detectNotifications(_prevSnap); } catch(e) { console.warn('detect:', e); } }
@@ -453,7 +477,7 @@ async function openGame(id) {
   if (S.ch) { try { sb.removeChannel(S.ch); } catch(e){} }
   let tm; const later = () => { clearTimeout(tm); tm = setTimeout(refreshNow, 400); };
   S.ch = sb.channel('g' + id);
-  ['counties','buildings','game_players','player_resources','player_units','battles','army_movements','diplomacy','orders','order_members','player_stats','game_effects','games'].forEach(tb => S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
+  ['counties','buildings','game_players','player_resources','player_units','battles','army_movements','diplomacy','orders','order_members','player_stats','game_effects','games','market_listings','market_offers'].forEach(tb => S.ch.on('postgres_changes', { event:'*', schema:'public', table:tb }, later));
   S.ch.subscribe();
 }
 const rpc = async (fn, args) => { if (S.demo) { if (fn === 'admin_set_game_status') S.games[0].status = args.p_status; if (fn === 'admin_assign_county') { const c = S.counties.find(x => x.id === args.p_county); if (c) c.owner_id = args.p_player; } S.msg = ''; return renderGame(); } const { error } = await sb.rpc(fn, args); S.msg = error ? error.message : ''; await loadGames(); await loadState(); renderGame(); };
@@ -608,7 +632,7 @@ function renderGame() {
       <span style="font-size:20px;color:#b00020">→</span>
     </div>`;
   }
-  $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button><h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span>${g.target_score ? `<span class="chip" style="background:#fff3cd">🎯 Cél: ${g.target_score} pont</span>` : ''}<span class="grow"></span>` + (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button><button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button><button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button><button class="btn ghost" onclick="openTargetModal()">🎯 Cél</button><button class="btn ghost" onclick="openWinnerModal()">🏆 Győztes</button><button class="btn ghost" onclick="seedTest()">Teszt</button><button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="row" style="margin-top:10px" id="player-chips"></div><div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>${winnerBanner}${battleBanner}<div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div><div id="msz"><div id="map"></div></div></div><div id="action-bar">${renderActionBar()}</div></main>`;
+  $('app').innerHTML = header() + `<main><div class="card"><div class="row"><button class="btn ghost" onclick="renderList()">← Játékok</button><h2 style="margin:0">${esc(g.name)}</h2><span class="badge ${g.status}">${ST[g.status]}</span>${g.target_score ? `<span class="chip" style="background:#fff3cd">🎯 Cél: ${g.target_score} pont</span>` : ''}<span class="grow"></span>` + (adm ? `<button class="btn" onclick="setStatus('running')" ${g.status === 'running' ? 'disabled' : ''}>▶ Indítás</button><button class="btn ghost" onclick="setStatus('paused')" ${g.status !== 'running' ? 'disabled' : ''}>⏸ Szünet</button><button class="btn ghost" onclick="setStatus('finished')" ${g.status === 'finished' ? 'disabled' : ''}>■ Lezárás</button><button class="btn ghost" onclick="openTargetModal()">🎯 Cél</button><button class="btn ghost" onclick="openWinnerModal()">🏆 Győztes</button><button class="btn ghost" onclick="seedTest()">Teszt</button><button class="btn danger" onclick="delGame()">Törlés</button>` : '') + `</div>${S.msg ? `<p class="err">${esc(S.msg)}</p>` : ''}<div class="row" style="margin-top:10px" id="player-chips"></div><div id="status" style="margin-top:10px"></div><div id="pick" style="margin-top:10px"></div></div>${winnerBanner}${battleBanner}<div class="row" style="margin:8px 0"><label style="display:flex;align-items:center;gap:6px;font-weight:600">🗺 Mutasd: <select onchange="setMapFilter(this.value)">${mapFilterOptions()}</select></label></div><div id="wrap"><div class="zoom"><button class="btn ghost" onclick="setZoom(Z-.15)">−</button><button class="btn ghost" onclick="setZoom(null)">⤢</button><button class="btn ghost" onclick="setZoom(Z+.15)">+</button></div><div id="msz"><div id="map"></div></div></div><div id="action-bar">${renderActionBar()}</div></main>`;
   buildMap(); setZoom(Z);
   if (sc) { $('wrap').scrollLeft = sc[0]; $('wrap').scrollTop = sc[1]; }
   renderGameUpdate();
@@ -712,6 +736,16 @@ function renderRoutes() {
   mapEl.appendChild(svg);
 }
 
+const MAP_FILTERS = { all:'Minden vármegye', self:'Saját vármegyéim', ally:'Szövetséges (rendtag)', coop:'Együttműködő', neutral:'Semleges', war:'Hadi állapotú', unowned:'Elfoglalatlan', units:'Ahol egységem van', battle:'Csata folyik' };
+function mapFilterOptions() { return Object.entries(MAP_FILTERS).map(([k, v]) => `<option value="${k}" ${(S.mapFilter || 'all') === k ? 'selected' : ''}>${v}</option>`).join(''); }
+function matchesMapFilter(c) {
+  const f = S.mapFilter || 'all'; if (f === 'all') return true;
+  if (f === 'units') return (S.units || []).some(u => u.county_id === c.id && (u.player_id === S.actAs || diploStatus(S.actAs, u.player_id) === 'ally'));
+  if (f === 'battle') return (S.battles || []).some(b => b.county_id === c.id && b.status === 'active');
+  return ownerDiplo(c.owner_id) === f;
+}
+function setMapFilter(v) { document.activeElement?.blur?.(); S.mapFilter = v; S.picked = null; renderGameUpdate(); }
+
 function paint(n) {
   const box = els[n]; if (!box) return;
   const c = S.byName[n]; if (!c) return;
@@ -725,6 +759,7 @@ function paint(n) {
   const isAdjacent = inTargetPhase && S.actionSource && !isSource && adjacentToSource(n);
   const isNonAdjacent = inTargetPhase && S.actionSource && !isSource && !isAdjacent;
   const hasMyUnits = (S.units || []).some(u => u.county_id === c.id && u.player_id === S.actAs && isUnitReady(u));
+  const filtered = !S.actionPhase && !matchesMapFilter(c);
   let filter = '';
   if (isSource) filter = 'drop-shadow(0 0 10px gold) drop-shadow(0 0 5px gold)';
   else if (battleHere) filter = 'drop-shadow(0 0 12px rgba(220,0,0,1)) drop-shadow(0 0 6px rgba(255,0,0,.7))';
@@ -732,11 +767,13 @@ function paint(n) {
   else if (DIPLO_COLORS[diplo] && !isNonAdjacent) filter = `drop-shadow(0 0 6px ${DIPLO_COLORS[diplo]}) drop-shadow(0 0 3px ${DIPLO_COLORS[diplo]})`;
   if (box.style.filter !== filter) box.style.filter = filter;
   if (battleHere) { box.classList.add('battle-active'); } else { box.classList.remove('battle-active'); }
-  const opacity = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? '0.2' : '1';
+  const opacity = (filtered || isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? '0.2' : '1';
   if (box.style.opacity !== opacity) box.style.opacity = opacity;
-  const cursor = (isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? 'not-allowed' : 'pointer';
+  const cursor = (filtered || isNonAdjacent || (inCountyPhase && (!hasMyUnits || battleHere))) ? 'not-allowed' : 'pointer';
   if (box.style.cursor !== cursor) box.style.cursor = cursor;
-  if (inCountyPhase) {
+  if (filtered) {
+    if (box.style.pointerEvents !== 'none') box.style.pointerEvents = 'none';
+  } else if (inCountyPhase) {
     if (!hasMyUnits || battleHere) {
       if (box.style.pointerEvents !== 'none') box.style.pointerEvents = 'none';
     } else if (box.style.pointerEvents === 'none') box.style.pointerEvents = '';
@@ -1025,6 +1062,7 @@ function renderPick() {
 async function recruit(countyId, unitKey) { if (S.demo) return alert('Demó módban nem elérhető.'); const amt = Number($('rec-' + unitKey)?.value); if (!amt || amt < 1) return alert('A mennyiség legalább 1 legyen.'); const ut = S.unitTypes.find(x => x.key === unitKey); if (!confirm(`Toborzás: ${amt}× ${ut?.name || unitKey}?`)) return; const { error } = await sb.rpc('recruit_unit', { p_county: countyId, p_type: unitKey, p_amount: amt, p_player: S.actAs }); if (error) return alert(error.message); await refreshNow(); }
 
 function tick() {
+  try { checkTrainingDone(); } catch(e) {}
   document.querySelectorAll('[data-lv]').forEach(e => { const [cid, res] = e.dataset.lv.split('|'); const r = S.prod.find(x => x.county_id === cid && x.resource === res); if (r) e.textContent = num(liveAmt(r)); });
   const mp = $('mpv'); if (mp) mp.textContent = Math.floor(curMp());
   const pd = $('pend');
