@@ -910,7 +910,13 @@ function pick(n) {
     S.actionTarget = c.id; openSendModal(S.actionSource, c.id, S.actionMode); return;
   }
   clearTimeout(S.pickTimeout); S.picked = n; renderPick();
-  S.pickTimeout = setTimeout(() => { S.picked = null; const el = $('pick'); if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>'; }, 5000);
+}
+function closePick() {
+  S.picked = null;
+  clearTimeout(S.pickTimeout);
+  const el = $('pick');
+  if (el) el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére.</span>';
+  const t = $('tooltip'); if (t) t.style.display = 'none';
 }
 function updateActionHint(t) { const el = $('action-hint'); if (el) el.textContent = t || ''; }
 function startAction(mode) {
@@ -1036,6 +1042,7 @@ function renderPick() {
   if (!n) { el.innerHTML = '<span style="color:var(--muted)">Kattints egy vármegyére a részletekért.</span>'; return; }
   const c = S.byName[n]; let h = info(n);
   if (!c) { el.innerHTML = h; return; }
+  h = `<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button class="btn ghost" style="padding:4px 12px" onclick="closePick()">✕ Bezárás</button></div>` + h;
   const battleHere = (S.battles || []).find(b => b.county_id === c.id && b.status === 'active');
   if (battleHere) { const atk = S.players.find(x => x.id === battleHere.attacker_id), def = S.players.find(x => x.id === battleHere.defender_id); h += `<hr><div style="padding:10px;background:#fee;border:1px solid #b00020;border-radius:8px"><b style="color:#b00020">⚔ Csata folyik!</b><br>Támadó: <b>${esc(atk?.nation_name || '?')}</b> · Védő: <b>${esc(def?.nation_name || '?')}</b><br>Hátralévő idő: <b data-end="${battleHere.ends_at}">…</b>${(S.actAs === battleHere.attacker_id || S.actAs === battleHere.defender_id) ? `<br><button class="btn danger" style="margin-top:6px" onclick="retreat('${battleHere.id}')">Visszavonulás (fele HP elvész)</button>` : ''}</div>`; }
   const incoming = incomingTo(c.id);
